@@ -14,6 +14,8 @@ __all__ = [
     "now",
     "nowf",
     "sec_to_hms",
+    "sec_to_timecode",
     "sec_to_shortstr",
     "hms_to_sec",
+    "timecode_to_sec",
 ]

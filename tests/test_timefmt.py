@@ -1,4 +1,7 @@
-from _tdvutil.timefmt import hms_to_sec, sec_to_hms, sec_to_shortstr
+from _tdvutil.timefmt import (hms_to_sec, sec_to_hms, sec_to_shortstr,
+                              sec_to_timecode, timecode_to_sec)
+
+import pytest
 
 
 def test_sec_to_hms() -> None:
@@ -40,3 +43,41 @@ def test_hms_to_sec() -> None:
 
     sec = hms_to_sec("33.5")
     assert sec == 33.5, "time conversion no hour"
+
+
+def test_sec_to_timecode() -> None:
+    timecode = sec_to_timecode(0.0, 60)
+    assert timecode == "00:00:00:00", "time conversion with zero time"
+
+    timecode = sec_to_timecode(3661.5, 30)
+    assert timecode == "01:01:01:15", "time conversion with integer frame rate 30"
+
+    timecode = sec_to_timecode(3661.5, 24)
+    assert timecode == "01:01:01:12", "time conversion with integer frame rate 24"
+
+    timecode = sec_to_timecode(3661.5, 25)
+    assert timecode == "01:01:01:12", "time conversion with integer frame rate 25"
+
+    with pytest.raises(ValueError) as e_info:
+        timecode = sec_to_timecode(3661.5, 29.97)
+
+        timecode = sec_to_timecode(3661.5, 30, dropframe=True)
+
+
+def test_timecode_to_sec() -> None:
+    sec = timecode_to_sec("00:00:00:00", 30)
+    assert sec == 0.0, "time conversion with zero timecode"
+
+    sec = timecode_to_sec("01:01:01:15", 30)
+    assert sec == 3661.5, "time conversion with integer frame rate 30"
+
+    sec = timecode_to_sec("01:01:01:12", 24)
+    assert sec == 3661.5, "time conversion with integer frame rate 24"
+
+    sec = timecode_to_sec("01:01:01:12", 25)
+    assert sec == 3661.48, "time conversion with integer frame rate 25"
+
+    with pytest.raises(ValueError) as e_info:
+        sec = timecode_to_sec("01:01", 29.97)
+
+        sec = timecode_to_sec("01:01", 30, dropframe=True)
