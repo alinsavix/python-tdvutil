@@ -1,6 +1,3 @@
-import time
-
-
 # Convert seconds to HH:MM:SS.SSS format. Sure, this could use strftime
 # or datetime.timedelta, but both of those have their own issues when
 # you want a consistent format involving milliseconds.
@@ -55,7 +52,7 @@ def sec_to_timecode(secs: float, fps: float, dropframe: bool = False) -> str:
     if dropframe:
         raise ValueError("Drop-frame timecode not currently supported")
 
-    if not fps.is_integer():
+    if isinstance(fps, float) and not fps.is_integer():
         raise ValueError("Non-integer frame rates not currently supported")
 
     hours = int(secs // (60 * 60))
@@ -150,7 +147,7 @@ def timecode_to_sec(timecode: str, fps: float, dropframe: bool = False) -> float
     if dropframe:
         raise ValueError("Drop-frame timecode not currently supported")
 
-    if not fps.is_integer():
+    if isinstance(fps, float) and not fps.is_integer():
         raise ValueError("Non-integer frame rates not currently supported")
 
     timesplit = timecode.split(":")
