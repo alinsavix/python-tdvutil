@@ -204,9 +204,9 @@ def getmro(t: type) -> Tuple[type, ...]:
         return tuple()
 
 
-def print_class_hierarchy_r(cls: object, seen: Set[type] = set()) -> None:
-    # if seen is None:
-    #     seen = set()
+def print_class_hierarchy_r(cls: object, seen: Set[type] = None) -> None:
+    if seen is None:
+        seen = set()
 
     if not isinstance(cls, type):
         print_class_hierarchy_r(type(cls), seen)
