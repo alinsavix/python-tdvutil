@@ -36,7 +36,7 @@ dependencies = [  ]
 tests = [
     'pytest>=7.0',
     'pytest-cov',
-    # 'pytest-html',
+    'pytest-html',
     # 'pytest-order',
     # 'pytest-benchmark[histogram]>=3.2.1',
     # 'responses',
