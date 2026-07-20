@@ -1,8 +1,5 @@
 from _tdvutil import __version__
 from _tdvutil.alintrospect import alintrospect, whatis
-from _tdvutil.llmcost import (DeprecatedModelError, calculate_cost, cheapest,
-                               compare_models, find_model, get_price,
-                               list_models, search)
 from _tdvutil.now import now, nowf
 from _tdvutil.pathfix import pathfix
 from _tdvutil.ppretty import ppretty
@@ -22,13 +19,4 @@ __all__ = [
     "sec_to_shortstr",
     "hms_to_sec",
     "timecode_to_sec",
-    # llmcost
-    "DeprecatedModelError",
-    "find_model",
-    "get_price",
-    "list_models",
-    "calculate_cost",
-    "compare_models",
-    "cheapest",
-    "search",
 ]
