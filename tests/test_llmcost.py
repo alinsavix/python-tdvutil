@@ -3,295 +3,285 @@
 import pytest
 
 from _tdvutil.llmcost import (
-    ALIASES,
-    PRICES,
+    _ALIASES,
+    _PRICES,
     DeprecatedModelError,
-    calculate_cost,
-    cheapest,
-    compare_models,
-    find_model,
-    get_price,
-    list_models,
-    search,
+    LLM_Cost,
+    LLM_Model,
+    LLM_Provider,
+    get_model,
+    get_models,
+    get_providers,
+    search_models,
 )
 
 
 # ---------------------------------------------------------------------------
-# find_model
+# get_model
 # ---------------------------------------------------------------------------
 
-class TestFindModel:
+class TestGetModel:
     def test_exact_match(self) -> None:
-        assert find_model("gpt-4o") == "gpt-4o"
+        m = get_model("gpt-4o")
+        assert m.name == "gpt-4o"
 
     def test_alias_match(self) -> None:
-        assert find_model("gpt4o") == "gpt-4o"
+        m = get_model("gpt4o")
+        assert m.name == "gpt-4o"
 
     def test_alias_case_insensitive(self) -> None:
-        assert find_model("GPT4O") == "gpt-4o"
+        m = get_model("GPT4O")
+        assert m.name == "gpt-4o"
 
-    def test_fuzzy_match(self) -> None:
-        result = find_model("gemini-flash")
-        # either the alias resolves directly or fuzzy finds a flash model
-        assert result is not None
-        assert "flash" in result
+    def test_returns_llm_model(self) -> None:
+        m = get_model("gpt-4o")
+        assert isinstance(m, LLM_Model)
 
-    def test_no_match_returns_none(self) -> None:
-        assert find_model("zzz-no-match-zzz") is None
+    def test_provider_is_llm_provider(self) -> None:
+        m = get_model("gpt-4o")
+        assert isinstance(m.provider, LLM_Provider)
+        assert m.provider.id == "openai"
+        assert m.provider.name == "OpenAI"
+        assert "openai" in m.provider.url.lower()
 
-    def test_normalized_spaces(self) -> None:
-        result = find_model("gemini flash")
-        assert result is not None
+    def test_pricing_fields(self) -> None:
+        m = get_model("gpt-4o")
+        assert m.input == 2.50
+        assert m.output == 10.00
+        assert m.cached_input == 1.25
 
+    def test_no_fuzzy_match(self) -> None:
+        with pytest.raises(KeyError):
+            get_model("gpt-4")
 
-# ---------------------------------------------------------------------------
-# get_price
-# ---------------------------------------------------------------------------
+    def test_unknown_raises_key_error(self) -> None:
+        with pytest.raises(KeyError):
+            get_model("zzz-no-such-model-zzz")
 
-class TestGetPrice:
-    def test_known_model(self) -> None:
-        price = get_price("gpt-4o")
-        assert price["model"] == "gpt-4o"
-        assert price["provider"] == "openai"
-        assert price["input"] == 2.50
-        assert price["output"] == 10.00
-
-    def test_alias_resolves(self) -> None:
-        price = get_price("claude-sonnet")
-        assert price["model"] == "claude-sonnet-5"
+    def test_fuzzy_hint_in_key_error(self) -> None:
+        with pytest.raises(KeyError, match="Did you mean"):
+            get_model("gpt-4o-mini-preview")
 
     def test_deprecated_raises_by_default(self) -> None:
         with pytest.raises(DeprecatedModelError, match="deprecated"):
-            get_price("gpt-4-32k")
+            get_model("gpt-4-32k")
 
     def test_deprecated_allowed_with_flag(self) -> None:
-        price = get_price("gpt-4-32k", include_deprecated=True)
-        assert price["model"] == "gpt-4-32k"
-        assert price["deprecated"] is True
+        m = get_model("gpt-4-32k", include_deprecated=True)
+        assert m.name == "gpt-4-32k"
+        assert m.deprecated is True
 
-    def test_unknown_model_raises_key_error(self) -> None:
-        with pytest.raises(KeyError):
-            get_price("nonexistent-model-xyz-abc")
+    def test_none_fields_are_none(self) -> None:
+        # gpt-5.5-pro has no cached_input
+        m = get_model("gpt-5.5-pro")
+        assert m.cached_input is None
 
-    def test_returns_cached_input_if_present(self) -> None:
-        price = get_price("claude-sonnet-5")
-        assert "cached_input" in price
-        assert price["cached_input"] == 0.20
+    def test_known_alias(self) -> None:
+        assert get_model("claude-sonnet").name == "claude-sonnet-5"
 
-    def test_model_key_in_result(self) -> None:
-        price = get_price("gpt-4o")
-        assert "model" in price
-
-    def test_gpt35_deprecated(self) -> None:
-        with pytest.raises(DeprecatedModelError):
-            get_price("gpt-3.5-turbo")
+    def test_notes_field(self) -> None:
+        m = get_model("claude-sonnet-5")
+        assert m.notes is not None
+        assert "pricing" in m.notes.lower() or "intro" in m.notes.lower()
 
 
 # ---------------------------------------------------------------------------
-# list_models
+# LLM_Model.cost()
 # ---------------------------------------------------------------------------
 
-class TestListModels:
-    def test_returns_list(self) -> None:
-        models = list_models()
+class TestModelCost:
+    def test_basic_cost(self) -> None:
+        m = get_model("gpt-4o")
+        cost = m.cost(input_tokens=1_000_000, output_tokens=1_000_000)
+        assert isinstance(cost, LLM_Cost)
+        assert cost.currency == "USD"
+        assert cost.input_cost == pytest.approx(2.50, rel=1e-6)
+        assert cost.output_cost == pytest.approx(10.00, rel=1e-6)
+        assert cost.total_cost == pytest.approx(12.50, rel=1e-6)
+
+    def test_model_name_in_result(self) -> None:
+        m = get_model("gpt-4o")
+        cost = m.cost(input_tokens=100, output_tokens=100)
+        assert cost.model == "gpt-4o"
+
+    def test_zero_tokens(self) -> None:
+        m = get_model("gpt-4o")
+        cost = m.cost(input_tokens=0, output_tokens=0)
+        assert cost.total_cost == 0.0
+
+    def test_cached_input_tokens(self) -> None:
+        m = get_model("gpt-4o")  # cached_input = $1.25/1M
+        cost = m.cost(input_tokens=0, output_tokens=0, cached_input_tokens=1_000_000)
+        assert cost.cached_cost == pytest.approx(1.25, rel=1e-6)
+
+    def test_cache_write_tokens_anthropic(self) -> None:
+        m = get_model("claude-sonnet-5")  # cache_write = $2.50/1M
+        cost = m.cost(input_tokens=0, output_tokens=0, cache_write_tokens=1_000_000)
+        assert cost.cache_write_cost == pytest.approx(2.50, rel=1e-6)
+
+    def test_batch_pricing(self) -> None:
+        m = get_model("claude-sonnet-5")
+        standard = m.cost(input_tokens=1_000_000, output_tokens=1_000_000)
+        batch = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, use_batch=True)
+        assert batch.total_cost < standard.total_cost
+
+    def test_breakdown_string(self) -> None:
+        m = get_model("gpt-4o")
+        cost = m.cost(input_tokens=100_000, output_tokens=20_000)
+        assert "input" in cost.breakdown
+        assert "output" in cost.breakdown
+        assert "Total" in cost.breakdown
+
+    def test_long_context_pricing(self) -> None:
+        m = get_model("gpt-5.5")  # long_input=10.00, long_output=45.00
+        standard = m.cost(input_tokens=1_000_000, output_tokens=1_000_000)
+        long = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, long_context=True)
+        assert long.total_cost > standard.total_cost
+        assert long.input_cost == pytest.approx(10.00, rel=1e-6)
+        assert long.output_cost == pytest.approx(45.00, rel=1e-6)
+
+    def test_long_context_no_pricing_falls_back(self) -> None:
+        # gpt-4o has no long_input/long_output — should silently use standard rates
+        m = get_model("gpt-4o")
+        standard = m.cost(input_tokens=1_000_000, output_tokens=1_000_000)
+        long = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, long_context=True)
+        assert long.total_cost == standard.total_cost
+
+    def test_small_count(self) -> None:
+        m = get_model("gpt-4o")
+        cost = m.cost(input_tokens=100, output_tokens=50)
+        # 100/1M * 2.50 + 50/1M * 10.0 = 0.00025 + 0.0005 = 0.00075
+        assert cost.total_cost == pytest.approx(0.00075, rel=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# get_models
+# ---------------------------------------------------------------------------
+
+class TestGetModels:
+    def test_returns_list_of_llm_model(self) -> None:
+        models = get_models()
         assert isinstance(models, list)
         assert len(models) > 0
+        assert all(isinstance(m, LLM_Model) for m in models)
 
     def test_excludes_deprecated_by_default(self) -> None:
-        models = list_models()
-        deprecated = [m for m in models if m.get("deprecated")]
-        assert len(deprecated) == 0
+        models = get_models()
+        assert all(not m.deprecated for m in models)
 
     def test_includes_deprecated_with_flag(self) -> None:
-        all_models = list_models(include_deprecated=True)
-        active = list_models(include_deprecated=False)
+        all_models = get_models(include_deprecated=True)
+        active = get_models(include_deprecated=False)
         assert len(all_models) > len(active)
 
     def test_provider_filter(self) -> None:
-        anthropic = list_models("anthropic")
-        assert all(m["provider"] == "anthropic" for m in anthropic)
+        anthropic = get_models("anthropic")
+        assert all(m.provider.id == "anthropic" for m in anthropic)
         assert len(anthropic) > 0
 
     def test_provider_filter_case_insensitive(self) -> None:
-        upper = list_models("ANTHROPIC")
-        lower = list_models("anthropic")
+        upper = get_models("ANTHROPIC")
+        lower = get_models("anthropic")
         assert len(upper) == len(lower)
 
     def test_unknown_provider_returns_empty(self) -> None:
-        result = list_models("no-such-provider")
-        assert result == []
+        assert get_models("no-such-provider") == []
 
-    def test_each_entry_has_model_key(self) -> None:
-        for m in list_models():
-            assert "model" in m
-
-
-# ---------------------------------------------------------------------------
-# calculate_cost
-# ---------------------------------------------------------------------------
-
-class TestCalculateCost:
-    def test_basic_cost(self) -> None:
-        cost = calculate_cost("gpt-4o", input_tokens=1_000_000, output_tokens=1_000_000)
-        assert cost["currency"] == "USD"
-        assert cost["input_cost"] == pytest.approx(2.50, rel=1e-6)
-        assert cost["output_cost"] == pytest.approx(10.00, rel=1e-6)
-        assert cost["total_cost"] == pytest.approx(12.50, rel=1e-6)
-
-    def test_zero_tokens(self) -> None:
-        cost = calculate_cost("gpt-4o", input_tokens=0, output_tokens=0)
-        assert cost["total_cost"] == 0.0
-
-    def test_cached_input_tokens(self) -> None:
-        # gpt-4o cached_input = $1.25/1M
-        cost = calculate_cost("gpt-4o", input_tokens=0, output_tokens=0,
-                               cached_input_tokens=1_000_000)
-        assert cost["cached_cost"] == pytest.approx(1.25, rel=1e-6)
-
-    def test_cache_write_tokens_anthropic(self) -> None:
-        # claude-sonnet-5 cache_write = $2.50/1M
-        cost = calculate_cost("claude-sonnet-5", input_tokens=0, output_tokens=0,
-                               cache_write_tokens=1_000_000)
-        assert cost["cache_write_cost"] == pytest.approx(2.50, rel=1e-6)
-
-    def test_batch_pricing_anthropic(self) -> None:
-        standard = calculate_cost("claude-sonnet-5", input_tokens=1_000_000, output_tokens=1_000_000)
-        batch = calculate_cost("claude-sonnet-5", input_tokens=1_000_000, output_tokens=1_000_000,
-                                use_batch=True)
-        assert batch["total_cost"] < standard["total_cost"]
-
-    def test_breakdown_string(self) -> None:
-        cost = calculate_cost("gpt-4o", input_tokens=100_000, output_tokens=20_000)
-        assert "input" in cost["breakdown"]
-        assert "output" in cost["breakdown"]
-        assert "Total" in cost["breakdown"]
-
-    def test_deprecated_model_raises(self) -> None:
-        with pytest.raises(DeprecatedModelError):
-            calculate_cost("gpt-4-32k", input_tokens=1_000, output_tokens=1_000)
-
-    def test_deprecated_model_allowed_with_flag(self) -> None:
-        cost = calculate_cost("gpt-4-32k", input_tokens=1_000_000, output_tokens=1_000_000,
-                               include_deprecated=True)
-        assert cost["total_cost"] > 0
-
-    def test_unknown_model_raises(self) -> None:
-        with pytest.raises(KeyError):
-            calculate_cost("zzz-no-such-model-zzz", input_tokens=1_000, output_tokens=1_000)
-
-    def test_small_token_count(self) -> None:
-        cost = calculate_cost("gpt-4o", input_tokens=100, output_tokens=50)
-        # 100/1M * 2.50 + 50/1M * 10.0 = 0.00025 + 0.0005 = 0.00075
-        assert cost["total_cost"] == pytest.approx(0.00075, rel=1e-4)
+    def test_provider_on_each_model(self) -> None:
+        for m in get_models():
+            assert isinstance(m.provider, LLM_Provider)
 
 
 # ---------------------------------------------------------------------------
-# compare_models
+# get_providers
 # ---------------------------------------------------------------------------
 
-class TestCompareModels:
-    def test_returns_sorted_cheapest_first(self) -> None:
-        results = compare_models(["gpt-4o", "gpt-4o-mini"], input_tokens=1_000_000, output_tokens=1_000_000)
-        assert len(results) == 2
-        assert results[0]["total_cost"] <= results[1]["total_cost"]
+class TestGetProviders:
+    def test_returns_list(self) -> None:
+        providers = get_providers()
+        assert isinstance(providers, list)
+        assert len(providers) > 0
 
-    def test_invalid_model_gets_inf(self) -> None:
-        results = compare_models(["gpt-4o", "fake-xyz-model"])
-        inf_entry = next(r for r in results if r.get("model") == "fake-xyz-model")
-        assert inf_entry["total_cost"] == float("inf")
+    def test_all_are_llm_provider(self) -> None:
+        for p in get_providers():
+            assert isinstance(p, LLM_Provider)
 
-    def test_empty_list(self) -> None:
-        assert compare_models([]) == []
+    def test_known_providers_present(self) -> None:
+        ids = {p.id for p in get_providers()}
+        for expected in ["openai", "anthropic", "google", "mistral"]:
+            assert expected in ids
 
-    def test_single_model(self) -> None:
-        results = compare_models(["gpt-4o"])
-        assert len(results) == 1
-        assert results[0]["model"] == "gpt-4o"
+    def test_each_has_name_and_url(self) -> None:
+        for p in get_providers():
+            assert p.name
+            assert p.url
 
-
-# ---------------------------------------------------------------------------
-# cheapest
-# ---------------------------------------------------------------------------
-
-class TestCheapest:
-    def test_returns_n_results(self) -> None:
-        results = cheapest(n=3)
-        assert len(results) <= 3
-
-    def test_sorted_cheapest_first(self) -> None:
-        results = cheapest(n=5)
-        costs = [r["total_cost"] for r in results]
-        assert costs == sorted(costs)
-
-    def test_provider_filter(self) -> None:
-        results = cheapest(provider="openai", n=3)
-        assert all(PRICES[str(r["model"])]["provider"] == "openai" for r in results)
-
-    def test_excludes_deprecated_by_default(self) -> None:
-        results = cheapest(n=20)
-        for r in results:
-            assert not PRICES[str(r["model"])].get("deprecated")
+    def test_openai_url(self) -> None:
+        by_id = {p.id: p for p in get_providers()}
+        assert "openai.com" in by_id["openai"].url
 
 
 # ---------------------------------------------------------------------------
-# search
+# search_models
 # ---------------------------------------------------------------------------
 
-class TestSearch:
+class TestSearchModels:
     def test_finds_flash_models(self) -> None:
-        results = search("flash")
+        results = search_models("flash")
         assert len(results) > 0
-        assert all("flash" in str(r["model"]).lower() or "flash" in str(r.get("notes", "")).lower()
+        assert all(isinstance(r, LLM_Model) for r in results)
+        assert all("flash" in r.name.lower() or (r.notes and "flash" in r.notes.lower())
                    for r in results)
 
     def test_case_insensitive(self) -> None:
-        lower = search("flash")
-        upper = search("FLASH")
+        lower = search_models("flash")
+        upper = search_models("FLASH")
         assert len(lower) == len(upper)
 
     def test_no_results(self) -> None:
-        results = search("zzznomatchzzz")
-        assert results == []
+        assert search_models("zzznomatchzzz") == []
 
     def test_includes_deprecated(self) -> None:
-        # "2.0" only matches deprecated Gemini 2.0 models
-        results = search("2.0-flash")
+        results = search_models("2.0-flash")
         assert len(results) > 0
-        deprecated = [r for r in results if r.get("deprecated")]
+        deprecated = [r for r in results if r.deprecated]
         assert len(deprecated) > 0
 
-    def test_searches_notes_field(self) -> None:
-        # "Long-ctx" appears in notes of several gpt-5 models
-        results = search("Long-ctx")
+    def test_searches_notes(self) -> None:
+        results = search_models("Long-ctx")
         assert len(results) > 0
 
 
 # ---------------------------------------------------------------------------
-# Data integrity checks
+# Data integrity
 # ---------------------------------------------------------------------------
 
 class TestDataIntegrity:
     def test_all_prices_have_provider(self) -> None:
-        for key, data in PRICES.items():
+        for key, data in _PRICES.items():
             assert "provider" in data, f"{key} missing 'provider'"
 
-    def test_all_prices_have_input_or_none(self) -> None:
-        for key, data in PRICES.items():
-            assert "input" in data, f"{key} missing 'input' key"
+    def test_all_aliases_resolve(self) -> None:
+        for alias, target in _ALIASES.items():
+            assert target in _PRICES, f"Alias {alias!r} -> {target!r} not in _PRICES"
 
-    def test_all_aliases_resolve_to_existing_keys(self) -> None:
-        for alias, target in ALIASES.items():
-            assert target in PRICES, f"Alias {alias!r} -> {target!r} not in PRICES"
-
-    def test_deprecated_field_is_bool_when_present(self) -> None:
-        for key, data in PRICES.items():
+    def test_deprecated_field_is_bool(self) -> None:
+        for key, data in _PRICES.items():
             if "deprecated" in data:
                 assert data["deprecated"] is True, f"{key}: deprecated should be True"
 
-    def test_known_deprecated_models_flagged(self) -> None:
-        for m in ["gpt-4-32k", "gpt-3.5-turbo", "gemini-2.0-flash", "claude-opus-4.1"]:
-            assert PRICES[m].get("deprecated") is True, f"{m} should be deprecated"
+    def test_known_deprecated_flagged(self) -> None:
+        for name in ["gpt-4-32k", "gpt-3.5-turbo", "gemini-2.0-flash", "claude-opus-4.1"]:
+            m = get_model(name, include_deprecated=True)
+            assert m.deprecated, f"{name} should be deprecated"
 
-    def test_known_active_models_not_flagged(self) -> None:
-        for m in ["gpt-4o", "claude-sonnet-5", "gemini-2.5-flash", "grok-4.5"]:
-            assert not PRICES[m].get("deprecated"), f"{m} should not be deprecated"
+    def test_known_active_not_flagged(self) -> None:
+        for name in ["gpt-4o", "claude-sonnet-5", "gemini-2.5-flash", "grok-4.5"]:
+            m = get_model(name)
+            assert not m.deprecated, f"{name} should not be deprecated"
+
+    def test_get_models_providers_match_get_providers(self) -> None:
+        provider_ids = {p.id for p in get_providers()}
+        for m in get_models():
+            assert m.provider.id in provider_ids, \
+                f"{m.name} has unknown provider {m.provider.id!r}"

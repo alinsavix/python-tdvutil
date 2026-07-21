@@ -6,11 +6,12 @@ All token prices are USD per 1,000,000 tokens unless noted otherwise.
 
 Usage::
 
-    from tdvutil import get_price, list_models, calculate_cost, find_model, compare_models
-    from tdvutil import DeprecatedModelError
+    from tdvutil.llmcost import get_model, LLM_Model, DeprecatedModelError
 
-    price = get_price("gpt-4o")
-    print(f"${price['input']} in / ${price['output']} out per 1M tokens")
+    model = get_model("gpt-4o")
+    print(f"${model.input} in / ${model.output} out per 1M tokens")
+    cost = model.cost(input_tokens=10_000, output_tokens=2_000)
+    print(f"Total: ${cost['total_cost']:.4f}")
 
 Sources:
     OpenAI:    https://developers.openai.com/api/docs/pricing
@@ -26,20 +27,18 @@ Sources:
 from __future__ import annotations
 
 import difflib
-from typing import Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 __all__ = [
-    "PRICES",
-    "ALIASES",
-    "PROVIDERS",
     "DeprecatedModelError",
-    "find_model",
-    "get_price",
-    "list_models",
-    "calculate_cost",
-    "compare_models",
-    "cheapest",
-    "search",
+    "LLM_Provider",
+    "LLM_Cost",
+    "LLM_Model",
+    "get_model",
+    "get_models",
+    "get_providers",
+    "search_models",
 ]
 
 # ---------------------------------------------------------------------------
@@ -52,22 +51,25 @@ __all__ = [
 #   cached_input             — price for cache-hit input tokens
 #   cache_write              — price to write tokens into cache
 #   batch_input / batch_output
+#   long_input / long_output — price above the long-context threshold
+#   longctx_threshold        — token count where long-context pricing kicks in
 #   deprecated : bool        — model is no longer active/recommended
 #   notes : str
 # ---------------------------------------------------------------------------
 
-PRICES: Dict[str, Dict[str, object]] = {
+# Public reference (read-only; do not modify)
+_PRICES: Dict[str, Dict[str, object]] = {
 
     # =========================================================================
     # OPENAI
     # =========================================================================
 
     # --- Flagship / latest ---
-    "gpt-5.6-sol":      {"provider": "openai", "input": 5.00,   "cached_input": 0.50,  "output": 30.00,  "notes": "Long-ctx: $10/$45 in/out"},
-    "gpt-5.6-terra":    {"provider": "openai", "input": 2.50,   "cached_input": 0.25,  "output": 15.00,  "notes": "Long-ctx: $5/$22.50 in/out"},
-    "gpt-5.6-luna":     {"provider": "openai", "input": 1.00,   "cached_input": 0.10,  "output": 6.00,   "notes": "Long-ctx: $2/$9 in/out"},
-    "gpt-5.5":          {"provider": "openai", "input": 5.00,   "cached_input": 0.50,  "output": 30.00,  "notes": "Long-ctx: $10/$45 in/out"},
-    "gpt-5.5-pro":      {"provider": "openai", "input": 30.00,  "cached_input": None,  "output": 180.00, "notes": "Long-ctx: $60/$270 in/out"},
+    "gpt-5.6-sol":      {"provider": "openai", "input": 5.00,   "cached_input": 0.50,  "output": 30.00,  "long_input": 10.00,  "long_output": 45.00,  "longctx_threshold": 200_000},
+    "gpt-5.6-terra":    {"provider": "openai", "input": 2.50,   "cached_input": 0.25,  "output": 15.00,  "long_input": 5.00,   "long_output": 22.50,  "longctx_threshold": 200_000},
+    "gpt-5.6-luna":     {"provider": "openai", "input": 1.00,   "cached_input": 0.10,  "output": 6.00,   "long_input": 2.00,   "long_output": 9.00,   "longctx_threshold": 200_000},
+    "gpt-5.5":          {"provider": "openai", "input": 5.00,   "cached_input": 0.50,  "output": 30.00,  "long_input": 10.00,  "long_output": 45.00,  "longctx_threshold": 200_000},
+    "gpt-5.5-pro":      {"provider": "openai", "input": 30.00,  "cached_input": None,  "output": 180.00, "long_input": 60.00,  "long_output": 270.00, "longctx_threshold": 200_000},
     "gpt-5.4":          {"provider": "openai", "input": 2.50,   "cached_input": 0.25,  "output": 15.00},
     "gpt-5.4-mini":     {"provider": "openai", "input": 0.75,   "cached_input": 0.075, "output": 4.50},
     "gpt-5.4-nano":     {"provider": "openai", "input": 0.20,   "cached_input": 0.02,  "output": 1.25},
@@ -167,7 +169,8 @@ PRICES: Dict[str, Dict[str, object]] = {
 
     "gemini-2.5-pro":        {"provider": "google", "input": 1.25,  "output": 10.00,
                               "cached_input": 0.125,
-                              "notes": "Tiered: >200k ctx: $2.50/$15.00; cache storage $4.50/1M tok/hr"},
+                              "long_input": 2.50, "long_output": 15.00, "longctx_threshold": 200_000,
+                              "notes": "Tiered: >200k ctx; cache storage $4.50/1M tok/hr"},
     "gemini-2.5-flash":      {"provider": "google", "input": 0.30,  "output": 2.50,
                               "cached_input": 0.03,
                               "notes": "Audio input: $1.00/1M; 1M ctx window"},
@@ -179,7 +182,8 @@ PRICES: Dict[str, Dict[str, object]] = {
                               "notes": "GA; thinking tokens billed in output"},
     "gemini-3.1-pro-preview":{"provider": "google", "input": 2.00,  "output": 12.00,
                               "cached_input": 0.20,
-                              "notes": "Preview; >200k ctx: $4/$18; cache storage $4.50/1M tok/hr"},
+                              "long_input": 4.00, "long_output": 18.00, "longctx_threshold": 200_000,
+                              "notes": "Preview; >200k ctx; cache storage $4.50/1M tok/hr"},
     "gemini-3.1-flash-lite": {"provider": "google", "input": 0.25,  "output": 1.50,
                               "cached_input": 0.025,
                               "notes": "GA; audio input: $0.50/1M"},
@@ -267,17 +271,22 @@ PRICES: Dict[str, Dict[str, object]] = {
     "copilot/gpt-5-mini":          {"provider": "copilot", "input": 0.25,  "cached_input": 0.025, "output": 2.00},
     "copilot/gpt-5.3-codex":       {"provider": "copilot", "input": 1.75,  "cached_input": 0.175, "output": 14.00},
     "copilot/gpt-5.4":             {"provider": "copilot", "input": 2.50,  "cached_input": 0.25,  "output": 15.00,
-                                    "notes": "Long-ctx (>272k): $5/$22.50 in/out"},
+                                    "long_input": 5.00, "long_output": 22.50, "longctx_threshold": 272_000,
+                                    "notes": "Long-ctx >272k tokens"},
     "copilot/gpt-5.4-mini":        {"provider": "copilot", "input": 0.75,  "cached_input": 0.075, "output": 4.50},
     "copilot/gpt-5.4-nano":        {"provider": "copilot", "input": 0.20,  "cached_input": 0.02,  "output": 1.25},
     "copilot/gpt-5.5":             {"provider": "copilot", "input": 5.00,  "cached_input": 0.50,  "output": 30.00,
-                                    "notes": "Long-ctx (>272k): $10/$45 in/out"},
+                                    "long_input": 10.00, "long_output": 45.00, "longctx_threshold": 272_000,
+                                    "notes": "Long-ctx >272k tokens"},
     "copilot/gpt-5.6-luna":        {"provider": "copilot", "input": 1.00,  "cached_input": 0.10,  "output": 6.00,
-                                    "notes": "Long-ctx (>200k): $2/$9 in/out"},
+                                    "long_input": 2.00, "long_output": 9.00, "longctx_threshold": 200_000,
+                                    "notes": "Long-ctx >200k tokens"},
     "copilot/gpt-5.6-sol":         {"provider": "copilot", "input": 5.00,  "cached_input": 0.50,  "output": 30.00,
-                                    "notes": "Long-ctx (>272k): $10/$45 in/out"},
+                                    "long_input": 10.00, "long_output": 45.00, "longctx_threshold": 272_000,
+                                    "notes": "Long-ctx >272k tokens"},
     "copilot/gpt-5.6-terra":       {"provider": "copilot", "input": 2.50,  "cached_input": 0.25,  "output": 15.00,
-                                    "notes": "Long-ctx (>272k): $5/$22.50 in/out"},
+                                    "long_input": 5.00, "long_output": 22.50, "longctx_threshold": 272_000,
+                                    "notes": "Long-ctx >272k tokens"},
     "copilot/claude-haiku-4.5":    {"provider": "copilot", "input": 1.00,  "cached_input": 0.10,  "cache_write": 1.25,  "output": 5.00},
     "copilot/claude-sonnet-4":     {"provider": "copilot", "input": 3.00,  "cached_input": 0.30,  "cache_write": 3.75,  "output": 15.00},
     "copilot/claude-sonnet-4.5":   {"provider": "copilot", "input": 3.00,  "cached_input": 0.30,  "cache_write": 3.75,  "output": 15.00},
@@ -295,7 +304,8 @@ PRICES: Dict[str, Dict[str, object]] = {
     "copilot/gemini-3-flash":      {"provider": "copilot", "input": 0.50,  "cached_input": 0.05,  "output": 3.00,
                                     "notes": "Public preview"},
     "copilot/gemini-3.1-pro":      {"provider": "copilot", "input": 2.00,  "cached_input": 0.20,  "output": 12.00,
-                                    "notes": "Public preview; Long-ctx (>200k): $4/$18 in/out"},
+                                    "long_input": 4.00, "long_output": 18.00, "longctx_threshold": 200_000,
+                                    "notes": "Public preview; Long-ctx >200k tokens"},
     "copilot/gemini-3.5-flash":    {"provider": "copilot", "input": 1.50,  "cached_input": 0.15,  "output": 9.00},
     "copilot/raptor-mini":         {"provider": "copilot", "input": 0.25,  "cached_input": 0.025, "output": 2.00,
                                     "notes": "GitHub fine-tuned model"},
@@ -328,7 +338,7 @@ PRICES: Dict[str, Dict[str, object]] = {
 # ---------------------------------------------------------------------------
 # Aliases — common shorthand → canonical key
 # ---------------------------------------------------------------------------
-ALIASES: Dict[str, str] = {
+_ALIASES: Dict[str, str] = {
     # OpenAI shorthands
     "gpt4o":          "gpt-4o",
     "gpt4omini":      "gpt-4o-mini",
@@ -392,7 +402,7 @@ ALIASES: Dict[str, str] = {
 }
 
 # Provider display metadata
-PROVIDERS: Dict[str, Dict[str, str]] = {
+_PROVIDERS: Dict[str, Dict[str, str]] = {
     "openai":    {"name": "OpenAI",         "url": "https://openai.com"},
     "anthropic": {"name": "Anthropic",      "url": "https://anthropic.com"},
     "google":    {"name": "Google",         "url": "https://ai.google.dev"},
@@ -414,324 +424,296 @@ class DeprecatedModelError(Exception):
 
 
 # ---------------------------------------------------------------------------
+# Public dataclasses
+# ---------------------------------------------------------------------------
+
+@dataclass
+class LLM_Provider:
+    """Metadata for an LLM provider."""
+    id: str       # canonical id, e.g. "openai", "anthropic"
+    name: str     # display name, e.g. "OpenAI"
+    url: str      # pricing page URL
+
+
+@dataclass
+class LLM_Cost:
+    """Itemised cost breakdown for a single LLM API call."""
+    model: str              # canonical model name
+    input_cost: float       # USD cost for non-cached input tokens
+    cached_cost: float      # USD cost for cache-hit tokens (0.0 if unused)
+    cache_write_cost: float # USD cost for cache-write tokens (0.0 if unused)
+    output_cost: float      # USD cost for output tokens
+    total_cost: float       # sum of all cost components
+    currency: str           # always "USD"
+    breakdown: str          # human-readable multi-line cost summary
+
+
+@dataclass
+class LLM_Model:
+    """Pricing information and cost calculations for a single LLM model."""
+
+    name: str                    # canonical model key, e.g. "gpt-4o"
+    provider: LLM_Provider       # provider metadata
+    input: Optional[float]       # USD per 1M input tokens; None = not applicable
+    output: Optional[float]      # USD per 1M output tokens; None = not applicable
+    cached_input: Optional[float] = None  # USD per 1M cache-hit input tokens
+    cache_write: Optional[float] = None   # USD per 1M cache-write tokens (Anthropic)
+    batch_input: Optional[float] = None   # USD per 1M input tokens (batch API)
+    batch_output: Optional[float] = None  # USD per 1M output tokens (batch API)
+    long_input: Optional[float] = None    # USD per 1M input tokens (long-context tier)
+    long_output: Optional[float] = None   # USD per 1M output tokens (long-context tier)
+    long_context_threshold: Optional[int] = None  # token count where longctx pricing kicks in
+    deprecated: bool = False              # True if model is deprecated/retired
+    notes: Optional[str] = None           # free-form notes (context tiers, etc.)
+
+    def cost(
+        self,
+        input_tokens: int,
+        output_tokens: int,
+        cached_input_tokens: int = 0,
+        cache_write_tokens: int = 0,
+        use_batch: bool = False,
+        long_context: bool = False,
+    ) -> LLM_Cost:
+        """Calculate the USD cost of a single API call with this model.
+
+        :param input_tokens: Number of non-cached input tokens.
+        :type input_tokens: int
+        :param output_tokens: Number of output tokens.
+        :type output_tokens: int
+        :param cached_input_tokens: Cache-hit tokens (billed at
+            ``cached_input`` rate, which is cheaper than standard input).
+        :type cached_input_tokens: int
+        :param cache_write_tokens: Tokens written into cache this turn.
+            Anthropic charges ~1.25x input for these; other providers have
+            no separate write cost (falls back to standard input rate).
+        :type cache_write_tokens: int
+        :param use_batch: If True and the model has batch pricing, use
+            ``batch_input`` / ``batch_output`` rates instead of standard.
+            Batch requests are asynchronous (up to 24h) at a significant
+            discount (e.g. 50% off for Anthropic, 20% off for xAI).
+        :type use_batch: bool
+        :param long_context: If True and the model has long-context pricing,
+            use ``long_input`` / ``long_output`` rates instead of standard.
+            The caller decides whether the request qualifies (thresholds vary:
+            200k tokens for some models, 272k for others — see ``model.notes``).
+        :type long_context: bool
+        :return: Itemised cost breakdown.
+        :rtype: LLM_Cost
+        """
+        m_per = 1_000_000
+
+        if use_batch and self.batch_input is not None and self.batch_output is not None:
+            in_rate: float = self.batch_input
+            out_rate: float = self.batch_output
+        elif long_context and self.long_input is not None and self.long_output is not None:
+            in_rate = self.long_input
+            out_rate = self.long_output
+        else:
+            in_rate = self.input or 0.0
+            out_rate = self.output or 0.0
+
+        cache_hit_rate: float = self.cached_input if self.cached_input is not None else in_rate
+        cache_write_rate: float = self.cache_write if self.cache_write is not None else in_rate
+
+        input_cost: float       = (input_tokens        / m_per) * in_rate
+        cached_cost: float      = (cached_input_tokens / m_per) * cache_hit_rate
+        cache_write_cost: float = (cache_write_tokens  / m_per) * cache_write_rate
+        output_cost: float      = (output_tokens       / m_per) * out_rate
+        total: float            = input_cost + cached_cost + cache_write_cost + output_cost
+
+        breakdown = f"{input_tokens:,} input @ ${in_rate}/1M = ${input_cost:.4f}"
+        if cache_write_tokens:
+            breakdown += f"\n{cache_write_tokens:,} cache write @ ${cache_write_rate}/1M = ${cache_write_cost:.4f}"
+        if cached_input_tokens:
+            breakdown += f"\n{cached_input_tokens:,} cache hit  @ ${cache_hit_rate}/1M = ${cached_cost:.4f}"
+        breakdown += f"\n{output_tokens:,} output @ ${out_rate}/1M = ${output_cost:.4f}"
+        breakdown += f"\nTotal = ${total:.4f}"
+
+        return LLM_Cost(
+            model=self.name,
+            input_cost=round(input_cost, 6),
+            cached_cost=round(cached_cost, 6),
+            cache_write_cost=round(cache_write_cost, 6),
+            output_cost=round(output_cost, 6),
+            total_cost=round(total, 6),
+            currency="USD",
+            breakdown=breakdown,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 def _resolve(model: str) -> Optional[str]:
-    """Resolve a model name string to a canonical key, or None if not found."""
-    if model in PRICES:
+    """Resolve a model name to its canonical key via exact match or alias.
+    Returns None if not found — no fuzzy matching.
+    """
+    if model in _PRICES:
         return model
     normalized = model.lower().strip().replace(" ", "-")
-    if normalized in ALIASES:
-        return ALIASES[normalized]
-    if normalized in PRICES:
+    if normalized in _ALIASES:
+        return _ALIASES[normalized]
+    if normalized in _PRICES:
         return normalized
-    alias_key = ALIASES.get(normalized)
-    if alias_key and alias_key in PRICES:
+    alias_key = _ALIASES.get(normalized)
+    if alias_key and alias_key in _PRICES:
         return alias_key
     return None
 
 
 def _fuzzy_candidates(model: str, n: int = 5) -> List[str]:
-    """Return up to n fuzzy-matched canonical keys for a model string."""
+    """Return up to n fuzzy-matched canonical keys (used only for error hints)."""
     normalized = model.lower().strip().replace(" ", "-")
-    all_keys = list(PRICES.keys()) + list(ALIASES.keys())
+    all_keys = list(_PRICES.keys()) + list(_ALIASES.keys())
     matches = difflib.get_close_matches(normalized, all_keys, n=n, cutoff=0.4)
     resolved: List[str] = []
     seen: set = set()
     for m in matches:
-        key = ALIASES.get(m, m)
-        if key in PRICES and key not in seen:
+        key = _ALIASES.get(m, m)
+        if key in _PRICES and key not in seen:
             resolved.append(key)
             seen.add(key)
     return resolved
+
+
+def _make_model(key: str) -> LLM_Model:
+    """Construct an LLM_Model from a canonical price key."""
+    data = _PRICES[key]
+    provider_id = str(data.get("provider", ""))
+    prov_data = _PROVIDERS.get(provider_id, {"name": provider_id, "url": ""})
+    provider = LLM_Provider(id=provider_id, name=prov_data["name"], url=prov_data["url"])
+    return LLM_Model(
+        name=key,
+        provider=provider,
+        input=data.get("input"),  # type: ignore[arg-type]
+        output=data.get("output"),  # type: ignore[arg-type]
+        cached_input=data.get("cached_input"),  # type: ignore[arg-type]
+        cache_write=data.get("cache_write"),  # type: ignore[arg-type]
+        batch_input=data.get("batch_input"),  # type: ignore[arg-type]
+        batch_output=data.get("batch_output"),  # type: ignore[arg-type]
+        long_input=data.get("long_input"),  # type: ignore[arg-type]
+        long_output=data.get("long_output"),  # type: ignore[arg-type]
+        long_context_threshold=data.get("longctx_threshold"),  # type: ignore[arg-type]
+        deprecated=bool(data.get("deprecated", False)),
+        notes=data.get("notes"),  # type: ignore[arg-type]
+    )
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def find_model(model: str) -> Optional[str]:
-    """
-    Resolve a model name (exact, alias, or fuzzy) to its canonical key.
-    Returns None if nothing matched.
+def get_model(model: str, include_deprecated: bool = False) -> LLM_Model:
+    """Look up a model by exact name or alias, returning an :class:`LLM_Model`.
 
-    :param model: Model name to look up (exact, alias, or approximate).
+    :param model: Model name (exact match or registered alias).
     :type model: str
-    :return: Canonical model key, or None if not found.
-    :rtype: Optional[str]
-
-    Example::
-
-        find_model("gpt4o")        # -> "gpt-4o"
-        find_model("claude")       # -> "claude-sonnet-5"  (via alias)
-        find_model("gemini flash") # -> "gemini-2.5-flash" (fuzzy)
-    """
-    exact = _resolve(model)
-    if exact:
-        return exact
-    candidates = _fuzzy_candidates(model, n=1)
-    return candidates[0] if candidates else None
-
-
-def get_price(model: str, include_deprecated: bool = False) -> Dict[str, object]:
-    """
-    Look up pricing for a model.
-
-    :param model: Model name (exact, alias, or approximate).
-    :type model: str
-    :param include_deprecated: If False (default), raises DeprecatedModelError
-        for deprecated models. Set True to retrieve pricing anyway.
+    :param include_deprecated: If False (default), raises
+        :exc:`DeprecatedModelError` for deprecated models.
     :type include_deprecated: bool
-    :return: Dict with ``model``, ``provider``, ``input``, ``output``, and any
-        additional fields (``cached_input``, ``batch_input``, ``notes``, etc.).
-    :rtype: dict
-    :raises KeyError: If the model can't be found even with fuzzy matching.
+    :return: Model pricing and metadata.
+    :rtype: LLM_Model
+    :raises KeyError: If the model is not found. The error message includes
+        fuzzy suggestions when close matches exist.
     :raises DeprecatedModelError: If the model is deprecated and
         ``include_deprecated=False``.
 
     Example::
 
-        price = get_price("gpt-4o")
-        print(f"${price['input']} in / ${price['output']} out per 1M tokens")
+        model = get_model("gpt-4o")
+        print(f"${model.input} in / ${model.output} out per 1M tokens")
+        cost = model.cost(input_tokens=10_000, output_tokens=2_000)
     """
     key = _resolve(model)
     if key:
-        data = PRICES[key]
+        data = _PRICES[key]
         if data.get("deprecated") and not include_deprecated:
             raise DeprecatedModelError(
                 f"Model {key!r} is deprecated. "
-                f"Pass include_deprecated=True to get its pricing anyway."
+                f"Pass include_deprecated=True to retrieve it anyway."
             )
-        return {"model": key, **data}
+        return _make_model(key)
 
     candidates = _fuzzy_candidates(model, n=5)
     if candidates:
         raise KeyError(
             f"Model {model!r} not found. Did you mean one of: {candidates}?"
         )
-    raise KeyError(f"Model {model!r} not found and no similar models matched.")
+    raise KeyError(f"Model {model!r} not found.")
 
 
-def list_models(
+def get_models(
     provider: Optional[str] = None,
     include_deprecated: bool = False,
-) -> List[Dict[str, object]]:
-    """
-    List all known models, optionally filtered by provider.
+) -> List[LLM_Model]:
+    """Return a list of known models, optionally filtered by provider.
 
-    :param provider: One of ``'openai'``, ``'anthropic'``, ``'google'``,
-        ``'mistral'``, ``'xai'``, ``'together'``, ``'groq'``, ``'copilot'``,
-        or None for all providers.
+    :param provider: Provider id (e.g. ``'openai'``, ``'anthropic'``),
+        or ``None`` for all providers.
     :type provider: Optional[str]
     :param include_deprecated: If False (default), deprecated models are
         excluded.
     :type include_deprecated: bool
-    :return: List of dicts, each with model name and pricing info.
-    :rtype: list[dict]
+    :return: List of models matching the filter.
+    :rtype: List[LLM_Model]
 
     Example::
 
-        for m in list_models("anthropic"):
-            print(m["model"], m["input"], m["output"])
+        for m in get_models("anthropic"):
+            print(m.name, m.input, m.output)
     """
-    results = []
-    for key, data in PRICES.items():
+    results: List[LLM_Model] = []
+    for key, data in _PRICES.items():
         if provider and data.get("provider") != provider.lower():
             continue
         if not include_deprecated and data.get("deprecated"):
             continue
-        results.append({"model": key, **data})
+        results.append(_make_model(key))
     return results
 
 
-def calculate_cost(
-    model: str,
-    input_tokens: int,
-    output_tokens: int,
-    cached_input_tokens: int = 0,
-    cache_write_tokens: int = 0,
-    use_batch: bool = False,
-    include_deprecated: bool = False,
-) -> Dict[str, object]:
-    """
-    Calculate the USD cost of a single API call.
+def get_providers() -> List[LLM_Provider]:
+    """Return metadata for all known providers.
 
-    :param model: Model name (exact, alias, or approximate).
-    :type model: str
-    :param input_tokens: Number of non-cached input tokens.
-    :type input_tokens: int
-    :param output_tokens: Number of output tokens.
-    :type output_tokens: int
-    :param cached_input_tokens: Cache-hit tokens (billed at cached_input rate).
-    :type cached_input_tokens: int
-    :param cache_write_tokens: Tokens written into cache this turn.
-        Anthropic charges ~1.25x input for these; OpenAI/Google have no
-        separate write cost.
-    :type cache_write_tokens: int
-    :param use_batch: If True, use batch_input/batch_output pricing where
-        available (Anthropic), otherwise standard.
-    :type use_batch: bool
-    :param include_deprecated: Allow cost calculation on deprecated models.
-    :type include_deprecated: bool
-    :return: Dict with ``model``, ``input_cost``, ``cached_cost``,
-        ``cache_write_cost``, ``output_cost``, ``total_cost``, ``currency``,
-        and a human-readable ``breakdown`` string.
-    :rtype: dict
-    :raises KeyError: If the model is not found.
-    :raises DeprecatedModelError: If the model is deprecated and
-        ``include_deprecated=False``.
+    :return: List of provider objects.
+    :rtype: List[LLM_Provider]
 
     Example::
 
-        cost = calculate_cost("claude-sonnet-5",
-                              input_tokens=5_000,
-                              output_tokens=2_000,
-                              cache_write_tokens=50_000,
-                              cached_input_tokens=50_000)
-        print(f"Total: ${cost['total_cost']:.4f}")
+        for p in get_providers():
+            print(p.id, p.name, p.url)
+
+        # Build a lookup by id if needed:
+        by_id = {p.id: p for p in get_providers()}
     """
-    key = find_model(model)
-    if key is None:
-        raise KeyError(f"Model {model!r} not found.")
-    data = PRICES[key]
-    if data.get("deprecated") and not include_deprecated:
-        raise DeprecatedModelError(
-            f"Model {key!r} is deprecated. "
-            f"Pass include_deprecated=True to get its pricing anyway."
-        )
-
-    m_per = 1_000_000
-
-    if use_batch and "batch_input" in data:
-        in_rate: float = float(data["batch_input"])  # type: ignore[arg-type]
-        out_rate: float = float(data["batch_output"])  # type: ignore[arg-type]
-    else:
-        in_rate = float(data.get("input") or 0.0)  # type: ignore[arg-type]
-        out_rate = float(data.get("output") or 0.0)  # type: ignore[arg-type]
-
-    cache_hit_rate: float = float(data["cached_input"]) if data.get("cached_input") is not None else in_rate  # type: ignore[arg-type]
-    cache_write_rate: float = float(data["cache_write"]) if data.get("cache_write") is not None else in_rate  # type: ignore[arg-type]
-
-    input_cost: float       = (input_tokens        / m_per) * in_rate
-    cached_cost: float      = (cached_input_tokens / m_per) * cache_hit_rate
-    cache_write_cost: float = (cache_write_tokens  / m_per) * cache_write_rate
-    output_cost: float      = (output_tokens       / m_per) * out_rate
-    total: float            = input_cost + cached_cost + cache_write_cost + output_cost
-
-    breakdown = f"{input_tokens:,} input @ ${in_rate}/1M = ${input_cost:.4f}"
-    if cache_write_tokens:
-        breakdown += f"\n{cache_write_tokens:,} cache write @ ${cache_write_rate}/1M = ${cache_write_cost:.4f}"
-    if cached_input_tokens:
-        breakdown += f"\n{cached_input_tokens:,} cache hit  @ ${cache_hit_rate}/1M = ${cached_cost:.4f}"
-    breakdown += f"\n{output_tokens:,} output @ ${out_rate}/1M = ${output_cost:.4f}"
-    breakdown += f"\nTotal = ${total:.4f}"
-
-    return {
-        "model":            key,
-        "input_cost":       round(input_cost,       6),
-        "cached_cost":      round(cached_cost,       6),
-        "cache_write_cost": round(cache_write_cost,  6),
-        "output_cost":      round(output_cost,       6),
-        "total_cost":       round(total,             6),
-        "currency":         "USD",
-        "breakdown":        breakdown,
-    }
-
-
-def compare_models(
-    models: List[str],
-    input_tokens: int = 1_000_000,
-    output_tokens: int = 1_000_000,
-) -> List[Dict[str, object]]:
-    """
-    Compare costs across multiple models for the same token counts.
-    Results are sorted cheapest first.
-
-    :param models: List of model names to compare.
-    :type models: list[str]
-    :param input_tokens: Input token count for comparison (default 1M).
-    :type input_tokens: int
-    :param output_tokens: Output token count for comparison (default 1M).
-    :type output_tokens: int
-    :return: Sorted list of cost dicts (same shape as :func:`calculate_cost`).
-    :rtype: list[dict]
-
-    Example::
-
-        results = compare_models(
-            ["gpt-4o", "claude-sonnet-5", "gemini-2.5-flash"],
-            input_tokens=100_000, output_tokens=20_000,
-        )
-        for r in results:
-            print(r["model"], f"${r['total_cost']:.4f}")
-    """
-    results = []
-    for m in models:
-        try:
-            cost = calculate_cost(m, input_tokens, output_tokens)
-            results.append(cost)
-        except (KeyError, DeprecatedModelError) as e:
-            results.append({"model": m, "error": str(e), "total_cost": float("inf")})
-    return sorted(results, key=lambda x: x.get("total_cost", float("inf")))  # type: ignore[return-value]
-
-
-def cheapest(
-    provider: Optional[str] = None,
-    n: int = 5,
-    input_tokens: int = 1_000_000,
-    output_tokens: int = 1_000_000,
-    include_deprecated: bool = False,
-) -> List[Dict[str, object]]:
-    """
-    Find the n cheapest models by combined input+output cost for given token
-    counts.
-
-    :param provider: Restrict to one provider, or None for all.
-    :type provider: Optional[str]
-    :param n: Number of results to return.
-    :type n: int
-    :param input_tokens: Input tokens for cost estimate.
-    :type input_tokens: int
-    :param output_tokens: Output tokens for cost estimate.
-    :type output_tokens: int
-    :param include_deprecated: Include deprecated models in ranking.
-    :type include_deprecated: bool
-    :return: Up to n cost dicts sorted cheapest first.
-    :rtype: list[dict]
-
-    Example::
-
-        for m in cheapest(provider="openai", n=3):
-            print(m["model"], f"${m['total_cost']:.4f}")
-    """
-    model_keys = [m["model"] for m in list_models(provider, include_deprecated)]
-    results = [
-        calculate_cost(str(m), input_tokens, output_tokens, include_deprecated=include_deprecated)
-        for m in model_keys
-        if PRICES[str(m)].get("input") is not None
+    return [
+        LLM_Provider(id=k, name=v["name"], url=v["url"])
+        for k, v in _PROVIDERS.items()
     ]
-    return sorted(results, key=lambda x: x["total_cost"])[:n]  # type: ignore[return-value]
 
 
-def search(query: str) -> List[Dict[str, object]]:
-    """
-    Search models by partial name match (case-insensitive substring).
-    Deprecated models are included in search results.
+def search_models(query: str) -> List[LLM_Model]:
+    """Search for models by substring match against model names and notes.
 
-    :param query: Substring to search for in model names and notes.
+    The search is case-insensitive. Deprecated models are included in
+    results (check ``model.deprecated`` to filter if needed).
+
+    :param query: Substring to search for in model names and notes fields.
     :type query: str
-    :return: All matching model dicts.
-    :rtype: list[dict]
+    :return: All matching models.
+    :rtype: List[LLM_Model]
 
     Example::
 
-        search("flash")  # -> all Gemini Flash variants
-        search("mini")   # -> all mini/small models across providers
+        search_models("flash")  # -> all Gemini Flash variants
+        search_models("mini")   # -> all mini/small models across providers
     """
     q = query.lower()
     return [
-        {"model": key, **data}
-        for key, data in PRICES.items()
+        _make_model(key)
+        for key, data in _PRICES.items()
         if q in key.lower() or q in str(data.get("notes", "")).lower()
     ]
+
