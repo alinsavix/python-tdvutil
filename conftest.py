@@ -10,5 +10,5 @@ print("load conftest")
 #             newpath = arg.replace("@rootdir@", str(config.rootdir))
 #             args[i] = os.path.normpath(newpath)
 
-def pytest_html_report_title(report):
+def pytest_html_report_title(report):  # type: ignore[no-untyped-def]
     report.title = "TDVUtil Test Report"
