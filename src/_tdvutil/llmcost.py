@@ -133,6 +133,9 @@ _PRICES: Dict[str, Dict[str, object]] = {
                                   "cached_input": 1.00,   "cache_write": 12.50,
                                   "batch_input": 5.00,    "batch_output": 25.00,
                                   "notes": "Next-gen intelligence for long-running agents"},
+    "claude-opus-5":             {"provider": "anthropic", "input": 5.00,  "output": 25.00,
+                                  "cached_input": 0.50,   "cache_write": 6.25,
+                                  "batch_input": 2.50,    "batch_output": 12.50},
     "claude-opus-4.8":           {"provider": "anthropic", "input": 5.00,  "output": 25.00,
                                   "cached_input": 0.50,   "cache_write": 6.25,
                                   "batch_input": 2.50,    "batch_output": 12.50,
@@ -297,6 +300,7 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "copilot/claude-opus-4.6":     {"provider": "copilot", "input": 5.00,  "cached_input": 0.50,  "cache_write": 6.25,  "output": 25.00},
     "copilot/claude-opus-4.7":     {"provider": "copilot", "input": 5.00,  "cached_input": 0.50,  "cache_write": 6.25,  "output": 25.00},
     "copilot/claude-opus-4.8":     {"provider": "copilot", "input": 5.00,  "cached_input": 0.50,  "cache_write": 6.25,  "output": 25.00},
+    "copilot/claude-opus-5":       {"provider": "copilot", "input": 5.00,  "cached_input": 0.50,  "cache_write": 6.25,  "output": 25.00},
     "copilot/claude-opus-4.8-fast":{"provider": "copilot", "input": 10.00, "cached_input": 1.00,  "cache_write": 12.50, "output": 50.00,
                                     "notes": "Fast mode preview; up to 2.5x faster"},
     "copilot/claude-fable-5":      {"provider": "copilot", "input": 10.00, "cached_input": 1.00,  "cache_write": 12.50, "output": 50.00},
@@ -352,7 +356,7 @@ _ALIASES: Dict[str, str] = {
     # Anthropic shorthands
     "claude-fable-5":      "claude-fable-5",
     "fable5":              "claude-fable-5",
-    "claude-opus":         "claude-opus-4.8",
+    "claude-opus":         "claude-opus-5",
     "claude-sonnet":       "claude-sonnet-5",
     "claude-haiku":        "claude-haiku-4.5",
     "claude-3.5-sonnet":   "claude-sonnet-4.5",
@@ -394,7 +398,7 @@ _ALIASES: Dict[str, str] = {
 
     # Copilot shorthands
     "copilot-sonnet":  "copilot/claude-sonnet-5",
-    "copilot-opus":    "copilot/claude-opus-4.8",
+    "copilot-opus":    "copilot/claude-opus-5",
     "copilot-haiku":   "copilot/claude-haiku-4.5",
     "copilot-gpt5":    "copilot/gpt-5.4",
     "raptor-mini":     "copilot/raptor-mini",
