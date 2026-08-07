@@ -1,7 +1,7 @@
 """
 LLM model pricing database and cost-calculation utilities.
 
-Prices last updated: 2026-07-20
+Prices last updated: 2026-08-06
 All token prices are USD per 1,000,000 tokens unless noted otherwise.
 
 Usage::
@@ -27,6 +27,7 @@ Sources:
 from __future__ import annotations
 
 import difflib
+import warnings
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -52,6 +53,7 @@ __all__ = [
 #   cache_write              — price to write tokens into cache
 #   batch_input / batch_output
 #   long_input / long_output — price above the long-context threshold
+#   long_cached_input / long_cache_write — long-context cache prices
 #   longctx_threshold        — token count where long-context pricing kicks in
 #   deprecated : bool        — model is no longer active/recommended
 #   notes : str
@@ -65,15 +67,20 @@ _PRICES: Dict[str, Dict[str, object]] = {
     # =========================================================================
 
     # --- Flagship / latest ---
-    "gpt-5.6-sol":      {"provider": "openai", "input": 5.00,   "cached_input": 0.50,  "output": 30.00,  "long_input": 10.00,  "long_output": 45.00,  "longctx_threshold": 200_000},
-    "gpt-5.6-terra":    {"provider": "openai", "input": 2.50,   "cached_input": 0.25,  "output": 15.00,  "long_input": 5.00,   "long_output": 22.50,  "longctx_threshold": 200_000},
-    "gpt-5.6-luna":     {"provider": "openai", "input": 1.00,   "cached_input": 0.10,  "output": 6.00,   "long_input": 2.00,   "long_output": 9.00,   "longctx_threshold": 200_000},
+    "gpt-5.6-sol":      {"provider": "openai", "input": 5.00,   "cached_input": 0.50,  "cache_write": 6.25, "output": 30.00,
+                          "long_input": 10.00, "long_cached_input": 1.00, "long_cache_write": 12.50, "long_output": 45.00, "longctx_threshold": 272_000},
+    "gpt-5.6-terra":    {"provider": "openai", "input": 2.00,   "cached_input": 0.20,  "cache_write": 2.50, "output": 12.00,
+                          "long_input": 4.00,  "long_cached_input": 0.40, "long_cache_write": 5.00,  "long_output": 18.00, "longctx_threshold": 272_000},
+    "gpt-5.6-luna":     {"provider": "openai", "input": 0.20,   "cached_input": 0.02,  "cache_write": 0.25, "output": 1.20,
+                          "long_input": 0.40,  "long_cached_input": 0.04, "long_cache_write": 0.50,  "long_output": 1.80,  "longctx_threshold": 272_000},
     "gpt-5.5":          {"provider": "openai", "input": 5.00,   "cached_input": 0.50,  "output": 30.00,  "long_input": 10.00,  "long_output": 45.00,  "longctx_threshold": 200_000},
     "gpt-5.5-pro":      {"provider": "openai", "input": 30.00,  "cached_input": None,  "output": 180.00, "long_input": 60.00,  "long_output": 270.00, "longctx_threshold": 200_000},
-    "gpt-5.4":          {"provider": "openai", "input": 2.50,   "cached_input": 0.25,  "output": 15.00},
+    "gpt-5.4":          {"provider": "openai", "input": 2.50,   "cached_input": 0.25,  "output": 15.00,
+                          "long_input": 5.00, "long_cached_input": 0.50, "long_output": 22.50, "longctx_threshold": 272_000},
     "gpt-5.4-mini":     {"provider": "openai", "input": 0.75,   "cached_input": 0.075, "output": 4.50},
     "gpt-5.4-nano":     {"provider": "openai", "input": 0.20,   "cached_input": 0.02,  "output": 1.25},
-    "gpt-5.4-pro":      {"provider": "openai", "input": 30.00,  "cached_input": None,  "output": 180.00},
+    "gpt-5.4-pro":      {"provider": "openai", "input": 30.00,  "cached_input": None,  "output": 180.00,
+                          "long_input": 60.00, "long_output": 270.00, "longctx_threshold": 272_000},
     "gpt-5.2":          {"provider": "openai", "input": 1.75,   "cached_input": 0.175, "output": 14.00},
     "gpt-5.2-pro":      {"provider": "openai", "input": 21.00,  "cached_input": None,  "output": 168.00},
     "gpt-5.1":          {"provider": "openai", "input": 1.25,   "cached_input": 0.125, "output": 10.00},
@@ -133,6 +140,10 @@ _PRICES: Dict[str, Dict[str, object]] = {
                                   "cached_input": 1.00,   "cache_write": 12.50,
                                   "batch_input": 5.00,    "batch_output": 25.00,
                                   "notes": "Next-gen intelligence for long-running agents"},
+    "claude-mythos-5":           {"provider": "anthropic", "input": 10.00, "output": 50.00,
+                                  "cached_input": 1.00,   "cache_write": 12.50,
+                                  "batch_input": 5.00,    "batch_output": 25.00,
+                                  "notes": "Limited availability"},
     "claude-opus-5":             {"provider": "anthropic", "input": 5.00,  "output": 25.00,
                                   "cached_input": 0.50,   "cache_write": 6.25,
                                   "batch_input": 2.50,    "batch_output": 12.50},
@@ -180,8 +191,14 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "gemini-2.5-flash-lite": {"provider": "google", "input": 0.10,  "output": 0.40,
                               "cached_input": 0.01,
                               "notes": "Audio input: $0.30/1M"},
+    "gemini-3.6-flash":      {"provider": "google", "input": 1.50,  "output": 7.50,
+                              "cached_input": 0.15,
+                              "notes": "GA; thinking tokens billed in output"},
     "gemini-3.5-flash":      {"provider": "google", "input": 1.50,  "output": 9.00,
                               "cached_input": 0.15,
+                              "notes": "GA; thinking tokens billed in output"},
+    "gemini-3.5-flash-lite": {"provider": "google", "input": 0.30,  "output": 2.50,
+                              "cached_input": 0.03,
                               "notes": "GA; thinking tokens billed in output"},
     "gemini-3.1-pro-preview":{"provider": "google", "input": 2.00,  "output": 12.00,
                               "cached_input": 0.20,
@@ -234,16 +251,26 @@ _PRICES: Dict[str, Dict[str, object]] = {
     # =========================================================================
 
     "grok-4.5":                    {"provider": "xai", "input": 2.00,  "cached_input": 0.30,  "output": 6.00,
+                                    "long_input": 4.00, "long_cached_input": 0.60, "long_output": 12.00, "longctx_threshold": 200_000,
                                     "notes": "500k context"},
     "grok-4.3":                    {"provider": "xai", "input": 1.25,  "cached_input": 0.20,  "output": 2.50,
+                                    "batch_input": 1.00, "batch_output": 2.00,
+                                    "long_input": 2.50, "long_cached_input": 0.40, "long_output": 5.00, "longctx_threshold": 200_000,
                                     "notes": "1M context; batch -20%"},
     "grok-4.20-multi-agent-0309":  {"provider": "xai", "input": 1.25,  "cached_input": 0.20,  "output": 2.50,
+                                    "batch_input": 1.00, "batch_output": 2.00,
+                                    "long_input": 2.50, "long_cached_input": 0.40, "long_output": 5.00, "longctx_threshold": 200_000,
                                     "notes": "1M context; batch -20%"},
     "grok-4.20-0309-reasoning":    {"provider": "xai", "input": 1.25,  "cached_input": 0.20,  "output": 2.50,
+                                    "batch_input": 1.00, "batch_output": 2.00,
+                                    "long_input": 2.50, "long_cached_input": 0.40, "long_output": 5.00, "longctx_threshold": 200_000,
                                     "notes": "1M context; batch -20%"},
     "grok-4.20-0309-non-reasoning":{"provider": "xai", "input": 1.25,  "cached_input": 0.20,  "output": 2.50,
+                                    "batch_input": 1.00, "batch_output": 2.00,
+                                    "long_input": 2.50, "long_cached_input": 0.40, "long_output": 5.00, "longctx_threshold": 200_000,
                                     "notes": "1M context; batch -20%"},
     "grok-build-0.1":              {"provider": "xai", "input": 1.00,  "cached_input": 0.20,  "output": 2.00,
+                                    "long_input": 2.00, "long_cached_input": 0.40, "long_output": 4.00, "longctx_threshold": 200_000,
                                     "notes": "Code API; 256k context"},
 
     # =========================================================================
@@ -281,14 +308,14 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "copilot/gpt-5.5":             {"provider": "copilot", "input": 5.00,  "cached_input": 0.50,  "output": 30.00,
                                     "long_input": 10.00, "long_output": 45.00, "longctx_threshold": 272_000,
                                     "notes": "Long-ctx >272k tokens"},
-    "copilot/gpt-5.6-luna":        {"provider": "copilot", "input": 1.00,  "cached_input": 0.10,  "output": 6.00,
-                                    "long_input": 2.00, "long_output": 9.00, "longctx_threshold": 200_000,
+    "copilot/gpt-5.6-luna":        {"provider": "copilot", "input": 0.20,  "cached_input": 0.02,  "cache_write": 0.25, "output": 1.20,
+                                    "long_input": 0.40, "long_cached_input": 0.04, "long_cache_write": 0.50, "long_output": 1.80, "longctx_threshold": 200_000,
                                     "notes": "Long-ctx >200k tokens"},
-    "copilot/gpt-5.6-sol":         {"provider": "copilot", "input": 5.00,  "cached_input": 0.50,  "output": 30.00,
-                                    "long_input": 10.00, "long_output": 45.00, "longctx_threshold": 272_000,
+    "copilot/gpt-5.6-sol":         {"provider": "copilot", "input": 5.00,  "cached_input": 0.50,  "cache_write": 6.25, "output": 30.00,
+                                    "long_input": 10.00, "long_cached_input": 1.00, "long_cache_write": 12.50, "long_output": 45.00, "longctx_threshold": 272_000,
                                     "notes": "Long-ctx >272k tokens"},
-    "copilot/gpt-5.6-terra":       {"provider": "copilot", "input": 2.50,  "cached_input": 0.25,  "output": 15.00,
-                                    "long_input": 5.00, "long_output": 22.50, "longctx_threshold": 272_000,
+    "copilot/gpt-5.6-terra":       {"provider": "copilot", "input": 2.00,  "cached_input": 0.20,  "cache_write": 2.50, "output": 12.00,
+                                    "long_input": 4.00, "long_cached_input": 0.40, "long_cache_write": 5.00, "long_output": 18.00, "longctx_threshold": 272_000,
                                     "notes": "Long-ctx >272k tokens"},
     "copilot/claude-haiku-4.5":    {"provider": "copilot", "input": 1.00,  "cached_input": 0.10,  "cache_write": 1.25,  "output": 5.00},
     "copilot/claude-sonnet-4":     {"provider": "copilot", "input": 3.00,  "cached_input": 0.30,  "cache_write": 3.75,  "output": 15.00},
@@ -450,6 +477,11 @@ class LLM_Cost:
     total_cost: float       # sum of all cost components
     currency: str           # always "USD"
     breakdown: str          # human-readable multi-line cost summary
+    pricing_tier: str = "standard"  # standard, batch, or long_context
+    input_rate: float = 0.0          # effective USD per 1M input tokens
+    cache_hit_rate: float = 0.0      # effective USD per 1M cache-hit tokens
+    cache_write_rate: float = 0.0    # effective USD per 1M cache-write tokens
+    output_rate: float = 0.0         # effective USD per 1M output tokens
 
 
 @dataclass
@@ -461,7 +493,7 @@ class LLM_Model:
     input: Optional[float]       # USD per 1M input tokens; None = not applicable
     output: Optional[float]      # USD per 1M output tokens; None = not applicable
     cached_input: Optional[float] = None  # USD per 1M cache-hit input tokens
-    cache_write: Optional[float] = None   # USD per 1M cache-write tokens (Anthropic)
+    cache_write: Optional[float] = None   # USD per 1M cache-write tokens
     batch_input: Optional[float] = None   # USD per 1M input tokens (batch API)
     batch_output: Optional[float] = None  # USD per 1M output tokens (batch API)
     long_input: Optional[float] = None    # USD per 1M input tokens (long-context tier)
@@ -469,15 +501,19 @@ class LLM_Model:
     long_context_threshold: Optional[int] = None  # token count where longctx pricing kicks in
     deprecated: bool = False              # True if model is deprecated/retired
     notes: Optional[str] = None           # free-form notes (context tiers, etc.)
+    long_cached_input: Optional[float] = None  # USD per 1M long-context cache-hit tokens
+    long_cache_write: Optional[float] = None   # USD per 1M long-context cache-write tokens
 
     def cost(
         self,
         input_tokens: int,
         output_tokens: int,
-        cached_input_tokens: int = 0,
+        cache_hit_tokens: int = 0,
         cache_write_tokens: int = 0,
         use_batch: bool = False,
-        long_context: bool = False,
+        long_context: Optional[bool] = None,
+        *,
+        cached_input_tokens: Optional[int] = None,
     ) -> LLM_Cost:
         """Calculate the USD cost of a single API call with this model.
 
@@ -485,43 +521,84 @@ class LLM_Model:
         :type input_tokens: int
         :param output_tokens: Number of output tokens.
         :type output_tokens: int
-        :param cached_input_tokens: Cache-hit tokens (billed at
+        :param cache_hit_tokens: Cache-hit tokens (billed at
             ``cached_input`` rate, which is cheaper than standard input).
-        :type cached_input_tokens: int
+        :type cache_hit_tokens: int
         :param cache_write_tokens: Tokens written into cache this turn.
-            Anthropic charges ~1.25x input for these; other providers have
-            no separate write cost (falls back to standard input rate).
+            Anthropic and current OpenAI models charge separately for these;
+            models without a separate write price fall back to the applicable
+            input rate.
         :type cache_write_tokens: int
         :param use_batch: If True and the model has batch pricing, use
             ``batch_input`` / ``batch_output`` rates instead of standard.
             Batch requests are asynchronous (up to 24h) at a significant
             discount (e.g. 50% off for Anthropic, 20% off for xAI).
         :type use_batch: bool
-        :param long_context: If True and the model has long-context pricing,
-            use ``long_input`` / ``long_output`` rates instead of standard.
-            The caller decides whether the request qualifies (thresholds vary:
-            200k tokens for some models, 272k for others — see ``model.notes``).
-        :type long_context: bool
+        :param long_context: ``None`` (default) automatically selects the
+            long-context tier from the total prompt tokens and
+            ``long_context_threshold``. ``True`` forces the long-context tier;
+            ``False`` forces standard pricing.
+        :type long_context: Optional[bool]
+        :param cached_input_tokens: Deprecated keyword alias for
+            ``cache_hit_tokens``.
+        :type cached_input_tokens: Optional[int]
         :return: Itemised cost breakdown.
         :rtype: LLM_Cost
         """
         m_per = 1_000_000
 
+        if cached_input_tokens is not None:
+            if cache_hit_tokens:
+                raise TypeError(
+                    "Pass only one of cache_hit_tokens and cached_input_tokens"
+                )
+            warnings.warn(
+                "cached_input_tokens is deprecated; use cache_hit_tokens instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            cache_hit_tokens = cached_input_tokens
+
+        prompt_tokens = input_tokens + cache_hit_tokens + cache_write_tokens
+        use_long_context = (
+            prompt_tokens > self.long_context_threshold
+            if long_context is None and self.long_context_threshold is not None
+            else bool(long_context)
+        )
+
         if use_batch and self.batch_input is not None and self.batch_output is not None:
             in_rate: float = self.batch_input
             out_rate: float = self.batch_output
-        elif long_context and self.long_input is not None and self.long_output is not None:
+            pricing_tier = "batch"
+            use_long_rates = False
+        elif use_long_context and self.long_input is not None and self.long_output is not None:
             in_rate = self.long_input
             out_rate = self.long_output
+            pricing_tier = "long_context"
+            use_long_rates = True
         else:
             in_rate = self.input or 0.0
             out_rate = self.output or 0.0
+            pricing_tier = "standard"
+            use_long_rates = False
 
-        cache_hit_rate: float = self.cached_input if self.cached_input is not None else in_rate
-        cache_write_rate: float = self.cache_write if self.cache_write is not None else in_rate
+        if use_long_rates:
+            cache_hit_rate: float = (
+                self.long_cached_input
+                if self.long_cached_input is not None
+                else self.cached_input if self.cached_input is not None else in_rate
+            )
+            cache_write_rate: float = (
+                self.long_cache_write
+                if self.long_cache_write is not None
+                else self.cache_write if self.cache_write is not None else in_rate
+            )
+        else:
+            cache_hit_rate = self.cached_input if self.cached_input is not None else in_rate
+            cache_write_rate = self.cache_write if self.cache_write is not None else in_rate
 
         input_cost: float       = (input_tokens        / m_per) * in_rate
-        cached_cost: float      = (cached_input_tokens / m_per) * cache_hit_rate
+        cached_cost: float      = (cache_hit_tokens    / m_per) * cache_hit_rate
         cache_write_cost: float = (cache_write_tokens  / m_per) * cache_write_rate
         output_cost: float      = (output_tokens       / m_per) * out_rate
         total: float            = input_cost + cached_cost + cache_write_cost + output_cost
@@ -529,8 +606,8 @@ class LLM_Model:
         breakdown = f"{input_tokens:,} input @ ${in_rate}/1M = ${input_cost:.4f}"
         if cache_write_tokens:
             breakdown += f"\n{cache_write_tokens:,} cache write @ ${cache_write_rate}/1M = ${cache_write_cost:.4f}"
-        if cached_input_tokens:
-            breakdown += f"\n{cached_input_tokens:,} cache hit  @ ${cache_hit_rate}/1M = ${cached_cost:.4f}"
+        if cache_hit_tokens:
+            breakdown += f"\n{cache_hit_tokens:,} cache hit  @ ${cache_hit_rate}/1M = ${cached_cost:.4f}"
         breakdown += f"\n{output_tokens:,} output @ ${out_rate}/1M = ${output_cost:.4f}"
         breakdown += f"\nTotal = ${total:.4f}"
 
@@ -543,6 +620,11 @@ class LLM_Model:
             total_cost=round(total, 6),
             currency="USD",
             breakdown=breakdown,
+            pricing_tier=pricing_tier,
+            input_rate=in_rate,
+            cache_hit_rate=cache_hit_rate,
+            cache_write_rate=cache_write_rate,
+            output_rate=out_rate,
         )
 
 
@@ -602,6 +684,8 @@ def _make_model(key: str) -> LLM_Model:
         long_context_threshold=data.get("longctx_threshold"),  # type: ignore[arg-type]
         deprecated=bool(data.get("deprecated", False)),
         notes=data.get("notes"),  # type: ignore[arg-type]
+        long_cached_input=data.get("long_cached_input"),  # type: ignore[arg-type]
+        long_cache_write=data.get("long_cache_write"),  # type: ignore[arg-type]
     )
 
 
@@ -720,4 +804,3 @@ def search_models(query: str) -> List[LLM_Model]:
         for key, data in _PRICES.items()
         if q in key.lower() or q in str(data.get("notes", "")).lower()
     ]
-

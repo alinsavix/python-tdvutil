@@ -50,6 +50,49 @@ class TestGetModel:
         assert m.output == 10.00
         assert m.cached_input == 1.25
 
+    @pytest.mark.parametrize(
+        ("name", "input_price", "cached_price", "write_price", "output_price"),
+        [
+            ("gpt-5.6-terra", 2.00, 0.20, 2.50, 12.00),
+            ("gpt-5.6-luna", 0.20, 0.02, 0.25, 1.20),
+            ("copilot/gpt-5.6-terra", 2.00, 0.20, 2.50, 12.00),
+            ("copilot/gpt-5.6-luna", 0.20, 0.02, 0.25, 1.20),
+        ],
+    )
+    def test_updated_gpt_5_6_prices(
+        self,
+        name: str,
+        input_price: float,
+        cached_price: float,
+        write_price: float,
+        output_price: float,
+    ) -> None:
+        m = get_model(name)
+        assert m.input == input_price
+        assert m.cached_input == cached_price
+        assert m.cache_write == write_price
+        assert m.output == output_price
+
+    @pytest.mark.parametrize(
+        ("name", "input_price", "cached_price", "output_price"),
+        [
+            ("gemini-3.6-flash", 1.50, 0.15, 7.50),
+            ("gemini-3.5-flash-lite", 0.30, 0.03, 2.50),
+            ("claude-mythos-5", 10.00, 1.00, 50.00),
+        ],
+    )
+    def test_new_model_prices(
+        self,
+        name: str,
+        input_price: float,
+        cached_price: float,
+        output_price: float,
+    ) -> None:
+        m = get_model(name)
+        assert m.input == input_price
+        assert m.cached_input == cached_price
+        assert m.output == output_price
+
     def test_no_fuzzy_match(self) -> None:
         with pytest.raises(KeyError):
             get_model("gpt-4")
@@ -109,10 +152,30 @@ class TestModelCost:
         cost = m.cost(input_tokens=0, output_tokens=0)
         assert cost.total_cost == 0.0
 
-    def test_cached_input_tokens(self) -> None:
+    def test_cache_hit_tokens(self) -> None:
         m = get_model("gpt-4o")  # cached_input = $1.25/1M
-        cost = m.cost(input_tokens=0, output_tokens=0, cached_input_tokens=1_000_000)
+        cost = m.cost(input_tokens=0, output_tokens=0, cache_hit_tokens=1_000_000)
         assert cost.cached_cost == pytest.approx(1.25, rel=1e-6)
+
+    def test_deprecated_cached_input_tokens_alias(self) -> None:
+        m = get_model("gpt-4o")
+        with pytest.warns(DeprecationWarning, match="cache_hit_tokens"):
+            cost = m.cost(
+                input_tokens=0,
+                output_tokens=0,
+                cached_input_tokens=1_000_000,
+            )
+        assert cost.cached_cost == pytest.approx(1.25, rel=1e-6)
+
+    def test_cache_token_arguments_are_mutually_exclusive(self) -> None:
+        m = get_model("gpt-4o")
+        with pytest.raises(TypeError, match="only one"):
+            m.cost(
+                input_tokens=0,
+                output_tokens=0,
+                cache_hit_tokens=1,
+                cached_input_tokens=1,
+            )
 
     def test_cache_write_tokens_anthropic(self) -> None:
         m = get_model("claude-sonnet-5")  # cache_write = $2.50/1M
@@ -134,7 +197,11 @@ class TestModelCost:
 
     def test_long_context_pricing(self) -> None:
         m = get_model("gpt-5.5")  # long_input=10.00, long_output=45.00
-        standard = m.cost(input_tokens=1_000_000, output_tokens=1_000_000)
+        standard = m.cost(
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            long_context=False,
+        )
         long = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, long_context=True)
         assert long.total_cost > standard.total_cost
         assert long.input_cost == pytest.approx(10.00, rel=1e-6)
@@ -146,6 +213,59 @@ class TestModelCost:
         standard = m.cost(input_tokens=1_000_000, output_tokens=1_000_000)
         long = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, long_context=True)
         assert long.total_cost == standard.total_cost
+
+    def test_long_context_uses_long_cache_prices(self) -> None:
+        m = get_model("gpt-5.6-terra")
+        cost = m.cost(
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            cache_hit_tokens=1_000_000,
+            cache_write_tokens=1_000_000,
+            long_context=True,
+        )
+        assert cost.input_cost == pytest.approx(4.00, rel=1e-6)
+        assert cost.cached_cost == pytest.approx(0.40, rel=1e-6)
+        assert cost.cache_write_cost == pytest.approx(5.00, rel=1e-6)
+        assert cost.output_cost == pytest.approx(18.00, rel=1e-6)
+        assert cost.total_cost == pytest.approx(27.40, rel=1e-6)
+
+    def test_long_context_is_selected_automatically(self) -> None:
+        m = get_model("gpt-5.6-terra")
+        cost = m.cost(input_tokens=272_001, output_tokens=1)
+        assert cost.pricing_tier == "long_context"
+        assert cost.input_rate == 4.00
+        assert cost.cache_hit_rate == 0.40
+        assert cost.cache_write_rate == 5.00
+        assert cost.output_rate == 18.00
+
+    def test_standard_context_can_be_forced(self) -> None:
+        m = get_model("gpt-5.6-terra")
+        cost = m.cost(input_tokens=272_001, output_tokens=1, long_context=False)
+        assert cost.pricing_tier == "standard"
+        assert cost.input_rate == 2.00
+
+    def test_all_prompt_token_types_count_toward_threshold(self) -> None:
+        m = get_model("gpt-5.6-terra")
+        cost = m.cost(
+            input_tokens=200_000,
+            output_tokens=1,
+            cache_hit_tokens=50_000,
+            cache_write_tokens=22_001,
+        )
+        assert cost.pricing_tier == "long_context"
+
+    def test_gpt_5_4_long_context_pricing(self) -> None:
+        m = get_model("gpt-5.4")
+        assert m.long_context_threshold == 272_000
+        cost = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, long_context=True)
+        assert cost.total_cost == pytest.approx(27.50, rel=1e-6)
+
+    def test_xai_long_context_and_batch_pricing(self) -> None:
+        m = get_model("grok-4.3")
+        long = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, long_context=True)
+        batch = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, use_batch=True)
+        assert long.total_cost == pytest.approx(7.50, rel=1e-6)
+        assert batch.total_cost == pytest.approx(3.00, rel=1e-6)
 
     def test_small_count(self) -> None:
         m = get_model("gpt-4o")
