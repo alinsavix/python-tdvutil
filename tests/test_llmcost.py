@@ -53,10 +53,10 @@ class TestGetModel:
     @pytest.mark.parametrize(
         ("name", "input_price", "cached_price", "write_price", "output_price"),
         [
-            ("gpt-5.6-terra", 2.00, 0.20, 2.50, 12.00),
-            ("gpt-5.6-luna", 0.20, 0.02, 0.25, 1.20),
-            ("copilot/gpt-5.6-terra", 2.00, 0.20, 2.50, 12.00),
-            ("copilot/gpt-5.6-luna", 0.20, 0.02, 0.25, 1.20),
+            ("gpt-5.6-sol", 4.00, 0.40, 5.00, 20.00),
+            ("gpt-6-astra", 10.00, 1.00, 12.50, 50.00),
+            ("copilot/gpt-5.6-sol", 4.00, 0.40, 5.00, 20.00),
+            ("copilot/gpt-6-astra", 10.00, 1.00, 12.50, 50.00),
         ],
     )
     def test_updated_gpt_5_6_prices(
@@ -76,9 +76,13 @@ class TestGetModel:
     @pytest.mark.parametrize(
         ("name", "input_price", "cached_price", "output_price"),
         [
-            ("gemini-3.6-flash", 1.50, 0.15, 7.50),
+            ("gemini-3.6-flash", 0.75, 0.075, 3.75),
+            ("gemini-3.7-flash", 0.75, 0.075, 3.75),
+            ("gemini-3.8-flash", 0.75, 0.075, 3.75),
             ("gemini-3.5-flash-lite", 0.30, 0.03, 2.50),
             ("claude-mythos-5", 10.00, 1.00, 50.00),
+            ("claude-fable-5.1", 10.00, 0.25, 50.00),
+            ("grok-4.6", 2.00, 0.50, 6.00),
         ],
     )
     def test_new_model_prices(
@@ -121,6 +125,10 @@ class TestGetModel:
 
     def test_known_alias(self) -> None:
         assert get_model("claude-sonnet").name == "claude-sonnet-5"
+
+    @pytest.mark.parametrize("alias", ["gpt6", "chatgpt-6", "astra"])
+    def test_gpt_6_aliases(self, alias: str) -> None:
+        assert get_model(alias).name == "gpt-6-astra"
 
     def test_notes_field(self) -> None:
         m = get_model("claude-sonnet-5")
@@ -259,6 +267,23 @@ class TestModelCost:
         assert m.long_context_threshold == 272_000
         cost = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, long_context=True)
         assert cost.total_cost == pytest.approx(27.50, rel=1e-6)
+
+    def test_gpt_6_astra_long_context_and_batch_pricing(self) -> None:
+        m = get_model("gpt-6-astra")
+        long = m.cost(
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            cache_hit_tokens=1_000_000,
+            cache_write_tokens=1_000_000,
+            long_context=True,
+        )
+        batch = m.cost(
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            use_batch=True,
+        )
+        assert long.total_cost == pytest.approx(122.00, rel=1e-6)
+        assert batch.total_cost == pytest.approx(30.00, rel=1e-6)
 
     def test_xai_long_context_and_batch_pricing(self) -> None:
         m = get_model("grok-4.3")
