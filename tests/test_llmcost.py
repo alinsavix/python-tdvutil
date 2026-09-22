@@ -82,7 +82,14 @@ class TestGetModel:
             ("gemini-3.5-flash-lite", 0.30, 0.03, 2.50),
             ("claude-mythos-5", 10.00, 1.00, 50.00),
             ("claude-fable-5.1", 10.00, 0.25, 50.00),
+            ("claude-opus-5.5", 4.00, 0.20, 20.00),
+            ("gpt-6-sol", 2.00, 0.20, 10.00),
+            ("gpt-6-luna", 0.10, 0.01, 0.50),
             ("grok-4.6", 2.00, 0.50, 6.00),
+            ("grok-4.7", 2.00, 0.50, 6.00),
+            ("zai-glm-5-3", 1.40, 0.14, 4.40),
+            ("together/ternary-bonsai-27b", 0.00, None, 0.00),
+            ("groq/openai/gpt-oss-20b", 0.075, 0.0375, 0.30),
         ],
     )
     def test_new_model_prices(
@@ -196,6 +203,14 @@ class TestModelCost:
         batch = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, use_batch=True)
         assert batch.total_cost < standard.total_cost
 
+    def test_current_google_batch_pricing(self) -> None:
+        m = get_model("gemini-2.5-flash")
+        batch = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, use_batch=True)
+        assert batch.pricing_tier == "batch"
+        assert batch.input_rate == pytest.approx(0.15)
+        assert batch.output_rate == pytest.approx(1.25)
+        assert batch.total_cost == pytest.approx(1.40)
+
     def test_breakdown_string(self) -> None:
         m = get_model("gpt-4o")
         cost = m.cost(input_tokens=100_000, output_tokens=20_000)
@@ -285,12 +300,19 @@ class TestModelCost:
         assert long.total_cost == pytest.approx(122.00, rel=1e-6)
         assert batch.total_cost == pytest.approx(30.00, rel=1e-6)
 
-    def test_xai_long_context_and_batch_pricing(self) -> None:
+    def test_xai_long_context_pricing(self) -> None:
         m = get_model("grok-4.3")
         long = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, long_context=True)
-        batch = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, use_batch=True)
         assert long.total_cost == pytest.approx(7.50, rel=1e-6)
-        assert batch.total_cost == pytest.approx(3.00, rel=1e-6)
+        # xAI's current pricing page does not publish Batch API rates.
+        batch_requested = m.cost(
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            use_batch=True,
+            long_context=False,
+        )
+        assert batch_requested.pricing_tier == "standard"
+        assert batch_requested.total_cost == pytest.approx(3.75, rel=1e-6)
 
     def test_small_count(self) -> None:
         m = get_model("gpt-4o")
