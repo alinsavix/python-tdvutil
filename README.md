@@ -47,8 +47,12 @@ print(cost.total_cost)  # 0.045
 ## Hacking on it
 
 Uses [uv](https://docs.astral.sh/uv/). `make localdev` sets things up,
-`make test` runs the tests, and `make dist` builds. Pushing a `v*` tag makes
-GitHub Actions build it and push it to PyPI.
+`make test` runs the tests, and `make dist` builds.
+
+Pushing a `v*` tag makes GitHub Actions build it and publish to TestPyPI,
+then PyPI. Manually running the workflow on a `v*` tag does the same,
+including publishing to real PyPI. Manual branch runs just run the checks
+and save the built packages as workflow artifacts; they don't publish.
 
 ## License
 
