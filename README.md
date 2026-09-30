@@ -49,6 +49,10 @@ print(cost.total_cost)  # 0.045
 Uses [uv](https://docs.astral.sh/uv/). `make localdev` sets things up,
 `make test` runs the tests, and `make dist` builds.
 
+GitHub Actions runs the tests and builds packages for PRs targeting `main`
+and pushes to `main`, without publishing. Maintainer approval is required
+to run outside contributors' PR workflows.
+
 Pushing a `v*` tag makes GitHub Actions build it and publish to TestPyPI,
 then PyPI. Manually running the workflow on a `v*` tag does the same,
 including publishing to real PyPI. Manual branch runs just run the checks

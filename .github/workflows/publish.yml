@@ -1,7 +1,10 @@
 name: Build and publish
 
 on:
+  pull_request:
+    branches: [main]
   push:
+    branches: [main]
     tags:
       - "v*"
   workflow_dispatch:
@@ -40,7 +43,7 @@ jobs:
           path: dist/
 
   publish-testpypi:
-    # Tag pushes and manual runs on v* tags can publish; branch runs only build.
+    # Tag pushes and manual runs on v* tags can publish; branch and PR runs only build.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
