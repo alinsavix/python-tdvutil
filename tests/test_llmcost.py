@@ -83,8 +83,11 @@ class TestGetModel:
             ("claude-mythos-5", 10.00, 1.00, 50.00),
             ("claude-fable-5.1", 10.00, 0.25, 50.00),
             ("claude-opus-5.5", 4.00, 0.20, 20.00),
-            ("gpt-6-sol", 2.00, 0.20, 10.00),
+            ("claude-sonnet-5-5", 2.00, 0.20, 10.00),
+            ("gpt-6.1-sol", 2.00, 0.10, 10.00),
             ("gpt-6-luna", 0.10, 0.01, 0.50),
+            ("copilot/gpt-6.1-sol", 2.00, 0.10, 10.00),
+            ("copilot/mai-code-1.1-flash", 0.20, 0.02, 1.20),
             ("grok-4.6", 2.00, 0.50, 6.00),
             ("grok-4.7", 2.00, 0.50, 6.00),
             ("zai-glm-5-3", 1.40, 0.14, 4.40),
@@ -131,14 +134,14 @@ class TestGetModel:
         assert m.cached_input is None
 
     def test_known_alias(self) -> None:
-        assert get_model("claude-sonnet").name == "claude-sonnet-5"
+        assert get_model("claude-sonnet").name == "claude-sonnet-5-5"
 
     @pytest.mark.parametrize("alias", ["gpt6", "chatgpt-6", "astra"])
     def test_gpt_6_aliases(self, alias: str) -> None:
         assert get_model(alias).name == "gpt-6-astra"
 
     def test_notes_field(self) -> None:
-        m = get_model("claude-sonnet-5")
+        m = get_model("gpt-5.6-sol")
         assert m.notes is not None
         assert "pricing" in m.notes.lower() or "intro" in m.notes.lower()
 
@@ -193,12 +196,12 @@ class TestModelCost:
             )
 
     def test_cache_write_tokens_anthropic(self) -> None:
-        m = get_model("claude-sonnet-5")  # cache_write = $2.50/1M
+        m = get_model("claude-sonnet-5-5")  # cache_write = $2.50/1M
         cost = m.cost(input_tokens=0, output_tokens=0, cache_write_tokens=1_000_000)
         assert cost.cache_write_cost == pytest.approx(2.50, rel=1e-6)
 
     def test_batch_pricing(self) -> None:
-        m = get_model("claude-sonnet-5")
+        m = get_model("claude-sonnet-5-5")
         standard = m.cost(input_tokens=1_000_000, output_tokens=1_000_000)
         batch = m.cost(input_tokens=1_000_000, output_tokens=1_000_000, use_batch=True)
         assert batch.total_cost < standard.total_cost
@@ -443,7 +446,7 @@ class TestDataIntegrity:
             assert m.deprecated, f"{name} should be deprecated"
 
     def test_known_active_not_flagged(self) -> None:
-        for name in ["gpt-4o", "claude-sonnet-5", "gemini-2.5-flash", "grok-4.5"]:
+        for name in ["gpt-4o", "claude-sonnet-5-5", "gemini-2.5-flash", "grok-4.5"]:
             m = get_model(name)
             assert not m.deprecated, f"{name} should not be deprecated"
 
