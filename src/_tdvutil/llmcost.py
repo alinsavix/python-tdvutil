@@ -1,7 +1,7 @@
 """
 LLM model pricing database and cost-calculation utilities.
 
-Prices last updated: 2026-09-22
+Prices last updated: 2026-09-30
 All token prices are USD per 1,000,000 tokens unless noted otherwise.
 
 Usage::
@@ -136,7 +136,10 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "text-embedding-3-large":    {"provider": "openai", "input": 0.13,  "output": None, "notes": "Embedding only"},
     "text-embedding-ada-002":    {"provider": "openai", "input": 0.10,  "output": None, "notes": "Embedding only"},
 
-    'gpt-6-sol': {'provider': 'openai', 'input': 2.0, 'output': 10.0, 'cached_input': 0.2, 'cache_write': 2.5, 'batch_input': 1.0, 'batch_output': 5.0, 'long_input': 4.0, 'long_cached_input': 0.4, 'long_cache_write': 5.0, 'long_output': 15.0, 'longctx_threshold': 272000},
+    "gpt-6.1-sol":    {"provider": "openai", "input": 2.00, "cached_input": 0.10, "cache_write": 2.50, "output": 10.00,
+                          "batch_input": 1.00, "batch_output": 5.00,
+                          "long_input": 4.00, "long_cached_input": 0.20, "long_cache_write": 5.00, "long_output": 15.00, "longctx_threshold": 272_000},
+    "gpt-6-sol":      {'provider': 'openai', 'input': 2.0, 'output': 10.0, 'cached_input': 0.2, 'cache_write': 2.5, 'batch_input': 1.0, 'batch_output': 5.0, 'long_input': 4.0, 'long_cached_input': 0.4, 'long_cache_write': 5.0, 'long_output': 15.0, 'longctx_threshold': 272000, 'deprecated': True, 'notes': 'Superseded by GPT-6.1 Sol'},
     'gpt-6-luna': {'provider': 'openai', 'input': 0.1, 'output': 0.5, 'cached_input': 0.01, 'cache_write': 0.125, 'batch_input': 0.05, 'batch_output': 0.25, 'long_input': 0.2, 'long_cached_input': 0.02, 'long_cache_write': 0.25, 'long_output': 0.75, 'longctx_threshold': 272000},
     'gpt-5.6-cyber': {'provider': 'openai', 'input': 12.5, 'output': 75.0, 'cached_input': 1.25, 'cache_write': 15.625, 'notes': 'Daybreak model; no long-context tier'},
     'chat-latest': {'provider': 'openai', 'input': 5.0, 'output': 30.0, 'cached_input': 0.5, 'notes': 'ChatGPT API model'},
@@ -170,7 +173,10 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "claude-sonnet-5":           {"provider": "anthropic", "input": 2.00,  "output": 10.00,
                                   "cached_input": 0.20,   "cache_write": 2.50,
                                   "batch_input": 1.00,    "batch_output": 5.00,
-                                  "notes": "Launch pricing retained as standard pricing"},
+                                  "deprecated": True, "notes": "Legacy; superseded by Claude Sonnet 5.5"},
+    "claude-sonnet-5-5":         {"provider": "anthropic", "input": 2.00,  "output": 10.00,
+                                  "cached_input": 0.20,   "cache_write": 2.50,
+                                  "batch_input": 1.00,    "batch_output": 5.00},
     "claude-haiku-4.5":          {"provider": "anthropic", "input": 1.00,  "output": 5.00,
                                   "cached_input": 0.10,   "cache_write": 1.25,
                                   "batch_input": 0.50,    "batch_output": 2.50},
@@ -371,8 +377,10 @@ _PRICES: Dict[str, Dict[str, object]] = {
                                     "notes": "Long-ctx >200k tokens"},
 
     'copilot/gpt-6-sol': {'provider': 'copilot', 'input': 2.0, 'output': 10.0, 'cached_input': 0.2, 'cache_write': 2.5, 'long_input': 4.0, 'long_cached_input': 0.4, 'long_cache_write': 5.0, 'long_output': 15.0, 'longctx_threshold': 272000, 'notes': 'Long-context >272k input tokens'},
+    'copilot/gpt-6.1-sol': {'provider': 'copilot', 'input': 2.0, 'output': 10.0, 'cached_input': 0.1, 'cache_write': 2.5, 'long_input': 4.0, 'long_cached_input': 0.2, 'long_cache_write': 5.0, 'long_output': 15.0, 'longctx_threshold': 272000, 'notes': 'Long-context >272k input tokens'},
     'copilot/gpt-6-luna': {'provider': 'copilot', 'input': 0.1, 'output': 0.5, 'cached_input': 0.01, 'cache_write': 0.125, 'long_input': 0.2, 'long_cached_input': 0.02, 'long_cache_write': 0.25, 'long_output': 0.75, 'longctx_threshold': 272000, 'notes': 'Long-context >272k input tokens'},
     'copilot/claude-opus-5.5': {'provider': 'copilot', 'input': 4.0, 'output': 20.0, 'cached_input': 0.2, 'cache_write': 5.0},
+    'copilot/claude-sonnet-5.5': {'provider': 'copilot', 'input': 2.0, 'output': 10.0, 'cached_input': 0.2, 'cache_write': 2.5},
     'copilot/grok-4.7': {'provider': 'copilot', 'input': 2.0, 'output': 6.0, 'cached_input': 0.5, 'long_input': 4.0, 'long_cached_input': 1.0, 'long_output': 12.0, 'longctx_threshold': 200000, 'notes': 'Long-context >200k input tokens'},
 
     # =========================================================================
@@ -421,7 +429,7 @@ _ALIASES: Dict[str, str] = {
     "claude-fable":        "claude-fable-5.1",
     "fable5":              "claude-fable-5.1",
     "claude-opus":         "claude-opus-5.5",
-    "claude-sonnet":       "claude-sonnet-5",
+    "claude-sonnet":       "claude-sonnet-5-5",
     "claude-haiku":        "claude-haiku-4.5",
     "claude-3.5-sonnet":   "claude-sonnet-4.5",
     "claude-3.7-sonnet":   "claude-sonnet-4.6",
