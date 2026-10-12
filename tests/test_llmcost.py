@@ -84,6 +84,8 @@ class TestGetModel:
             ("claude-fable-5.1", 10.00, 0.25, 50.00),
             ("claude-opus-5.5", 4.00, 0.20, 20.00),
             ("claude-sonnet-5-5", 2.00, 0.20, 10.00),
+            ("claude-haiku-5.5", 0.10, 0.01, 0.50),
+            ("copilot/claude-haiku-5.5", 0.10, 0.01, 0.50),
             ("gpt-6.1-sol", 2.00, 0.10, 10.00),
             ("gpt-6-luna", 0.10, 0.01, 0.50),
             ("copilot/gpt-6.1-sol", 2.00, 0.10, 10.00),
@@ -263,6 +265,20 @@ class TestModelCost:
         assert cost.cache_hit_rate == 0.40
         assert cost.cache_write_rate == 5.00
         assert cost.output_rate == 18.00
+
+    def test_haiku_5_5_long_context_pricing(self) -> None:
+        m = get_model("claude-haiku-5.5")
+        cost = m.cost(
+            input_tokens=100_001,
+            output_tokens=1_000_000,
+            cache_hit_tokens=1_000_000,
+            cache_write_tokens=1_000_000,
+        )
+        assert cost.pricing_tier == "long_context"
+        assert cost.input_rate == pytest.approx(0.50)
+        assert cost.cache_hit_rate == pytest.approx(0.05)
+        assert cost.cache_write_rate == pytest.approx(0.625)
+        assert cost.output_rate == pytest.approx(2.50)
 
     def test_standard_context_can_be_forced(self) -> None:
         m = get_model("gpt-5.6-terra")
