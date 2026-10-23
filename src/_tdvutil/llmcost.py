@@ -1,7 +1,7 @@
 """
 LLM model pricing database and cost-calculation utilities.
 
-Prices last updated: 2026-09-30
+Prices last updated: 2026-10-23
 All token prices are USD per 1,000,000 tokens unless noted otherwise.
 
 Usage::
@@ -139,12 +139,15 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "gpt-6.1-sol":    {"provider": "openai", "input": 2.00, "cached_input": 0.10, "cache_write": 2.50, "output": 10.00,
                           "batch_input": 1.00, "batch_output": 5.00,
                           "long_input": 4.00, "long_cached_input": 0.20, "long_cache_write": 5.00, "long_output": 15.00, "longctx_threshold": 272_000},
-    "gpt-6-sol":      {'provider': 'openai', 'input': 2.0, 'output': 10.0, 'cached_input': 0.2, 'cache_write': 2.5, 'batch_input': 1.0, 'batch_output': 5.0, 'long_input': 4.0, 'long_cached_input': 0.4, 'long_cache_write': 5.0, 'long_output': 15.0, 'longctx_threshold': 272000, 'deprecated': True, 'notes': 'Superseded by GPT-6.1 Sol'},
+    "gpt-6-sol":      {'provider': 'openai', 'input': 2.0, 'output': 10.0, 'cached_input': 0.2, 'cache_write': 2.5, 'batch_input': 1.0, 'batch_output': 5.0, 'long_input': 4.0, 'long_cached_input': 0.4, 'long_cache_write': 5.0, 'long_output': 15.0, 'longctx_threshold': 272000},
     'gpt-6-luna': {'provider': 'openai', 'input': 0.1, 'output': 0.5, 'cached_input': 0.01, 'cache_write': 0.125, 'batch_input': 0.05, 'batch_output': 0.25, 'long_input': 0.2, 'long_cached_input': 0.02, 'long_cache_write': 0.25, 'long_output': 0.75, 'longctx_threshold': 272000},
-    'gpt-5.6-cyber': {'provider': 'openai', 'input': 12.5, 'output': 75.0, 'cached_input': 1.25, 'cache_write': 15.625, 'notes': 'Daybreak model; no long-context tier'},
+    'gpt-5.6-cyber': {'provider': 'openai', 'input': 12.5, 'output': 75.0, 'cached_input': 1.25, 'cache_write': 15.625, 'deprecated': True, 'notes': 'Superseded by gpt-5.5-cyber'},
+    'gpt-5.5-cyber': {'provider': 'openai', 'input': 12.5, 'output': 75.0, 'cached_input': 1.25, 'notes': 'No published cache-write, batch, or long-context rate'},
     'chat-latest': {'provider': 'openai', 'input': 5.0, 'output': 30.0, 'cached_input': 0.5, 'notes': 'ChatGPT API model'},
     'gpt-5.3-codex': {'provider': 'openai', 'input': 1.75, 'output': 14.0, 'cached_input': 0.175, 'notes': 'Fast mode is 2x standard rates'},
-    'gpt-rosalind-research': {'provider': 'openai', 'input': 5.0, 'output': 25.0, 'cached_input': 0.5, 'notes': 'Trusted-access Life Sciences model; billing begins 2026-10-05'},
+    'gpt-rosalind-research': {'provider': 'openai', 'input': 5.0, 'output': 25.0, 'cached_input': 0.5, 'deprecated': True, 'notes': 'Superseded by gpt-rosalind-discovery'},
+    'gpt-rosalind-discovery': {'provider': 'openai', 'input': 5.0, 'output': 25.0, 'cached_input': 0.5},
+    'gpt-5-search-api': {'provider': 'openai', 'input': 1.25, 'output': 10.0, 'cached_input': 0.125},
 
     # =========================================================================
     # ANTHROPIC
@@ -158,7 +161,7 @@ _PRICES: Dict[str, Dict[str, object]] = {
                                   "cached_input": 0.25,   "cache_write": 12.50,
                                   "batch_input": 5.00,    "batch_output": 25.00,
                                   "notes": "Limited availability; cache hits priced at 0.025x base input"},
-    "claude-fable-5":            {'provider': 'anthropic', 'input': 10.0, 'output': 50.0, 'cached_input': 1.0, 'cache_write': 12.5, 'batch_input': 5.0, 'batch_output': 25.0, 'deprecated': True, 'notes': 'Active (legacy); superseded by Claude Fable 5.1'},
+    "claude-fable-5":            {'provider': 'anthropic', 'input': 10.0, 'output': 50.0, 'cached_input': 1.0, 'cache_write': 12.5, 'batch_input': 5.0, 'batch_output': 25.0, 'notes': 'Active legacy model; superseded by Claude Fable 5.1'},
     "claude-mythos-5":           {"provider": "anthropic", "input": 10.00, "output": 50.00,
                                   "cached_input": 1.00,   "cache_write": 12.50,
                                   "batch_input": 5.00,    "batch_output": 25.00,
@@ -173,7 +176,7 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "claude-sonnet-5":           {"provider": "anthropic", "input": 2.00,  "output": 10.00,
                                   "cached_input": 0.20,   "cache_write": 2.50,
                                   "batch_input": 1.00,    "batch_output": 5.00,
-                                  "deprecated": True, "notes": "Legacy; superseded by Claude Sonnet 5.5"},
+                                  "notes": "Active legacy model; superseded by Claude Sonnet 5.5"},
     "claude-sonnet-5-5":         {"provider": "anthropic", "input": 2.00,  "output": 10.00,
                                   "cached_input": 0.20,   "cache_write": 2.50,
                                   "batch_input": 1.00,    "batch_output": 5.00},
@@ -241,6 +244,8 @@ _PRICES: Dict[str, Dict[str, object]] = {
 
     "mistral-medium-latest":  {'provider': 'mistral', 'input': 1.5, 'output': 7.5, 'cached_input': 0.15, 'batch_input': 0.75, 'batch_output': 3.75, 'notes': 'Mistral Medium 3.5'},
     "mistral-large-latest":   {'provider': 'mistral', 'input': 0.5, 'output': 1.5, 'cached_input': 0.05, 'batch_input': 0.25, 'batch_output': 0.75, 'notes': 'Mistral Large 3'},
+    "mistral-large-4":        {'provider': 'mistral', 'input': 1.36, 'output': 4.18, 'cached_input': 0.14, 'batch_input': 0.68, 'batch_output': 2.09},
+    "mistral-large-4-0":      {'provider': 'mistral', 'input': 1.36, 'output': 4.18, 'cached_input': 0.14, 'batch_input': 0.68, 'batch_output': 2.09},
     "mistral-small-latest":   {'provider': 'mistral', 'input': 0.15, 'output': 0.6, 'cached_input': 0.015, 'batch_input': 0.075, 'batch_output': 0.3, 'notes': 'Mistral Small 4'},
     "devstral-medium-latest": {'provider': 'mistral', 'input': 0.4, 'output': 2.0, 'deprecated': True, 'notes': 'Retired 2026-07-30; replacement: Mistral Medium 3.5'},
     "devstral-small-latest":  {'provider': 'mistral', 'input': 0.1, 'output': 0.3, 'deprecated': True, 'notes': 'Retired 2026-03-30; replacement: Mistral Medium 3.5'},
@@ -256,6 +261,7 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "mistral-embed":          {'provider': 'mistral', 'input': 0.1, 'output': None, 'cached_input': 0.01, 'batch_input': 0.05, 'notes': 'Embedding only'},
 
     'zai-glm-5-3': {'provider': 'mistral', 'input': 1.4, 'output': 4.4, 'cached_input': 0.14, 'batch_input': 0.7, 'batch_output': 2.2, 'notes': 'Third-party hosted Z.ai model'},
+    'zai-glm-5-3-flash': {'provider': 'mistral', 'input': 0.15, 'output': 0.5, 'cached_input': 0.03, 'batch_input': 0.075, 'batch_output': 0.25, 'notes': 'Third-party hosted Z.ai model'},
     'zai-glm-5-2': {'provider': 'mistral', 'input': 1.4, 'output': 4.4, 'cached_input': 0.14, 'batch_input': 0.7, 'batch_output': 2.2, 'notes': 'Third-party hosted Z.ai model'},
     'voxtral-small-latest': {'provider': 'mistral', 'input': 0.1, 'output': 0.4, 'cached_input': 0.01, 'batch_input': 0.05, 'batch_output': 0.2, 'notes': 'Text token rates; audio input is $0.004/min'},
     'codestral-embed': {'provider': 'mistral', 'input': 0.15, 'output': None, 'cached_input': 0.015, 'batch_input': 0.075, 'notes': 'Embedding only'},
@@ -284,11 +290,11 @@ _PRICES: Dict[str, Dict[str, object]] = {
     # TOGETHER AI  (hosted open-source models)
     # =========================================================================
 
-    "together/llama-3.3-70b":          {"provider": "together", "input": 1.04,  "output": 1.04},
+    "together/llama-3.3-70b":          {"provider": "together", "input": 1.04,  "output": 1.04, "deprecated": True, "notes": "Not available on Together Serverless API"},
     "together/llama-3-8b-instruct-lite":{"provider": "together", "input": 0.14,  "output": 0.14},
     "together/qwen3-235b-a22b":        {"provider": "together", "input": 0.20,  "output": 0.60},
     "together/qwen3.7-plus":           {"provider": "together", "input": 0.32,  "output": 1.28},
-    "together/qwen3.7-max":            {'provider': 'together', 'input': 2.5, 'output': 7.5, 'cached_input': 0.25},
+    "together/qwen3.7-max":            {'provider': 'together', 'input': 1.5, 'output': 4.5, 'cached_input': 0.3},
     "together/qwen3.8-max":            {"provider": "together", "input": 2.00,  "cached_input": 0.25, "output": 6.00},
     "together/qwen3.8-flash":          {"provider": "together", "input": 0.15,  "output": 0.47},
     "together/qwen3.5-397b":           {"provider": "together", "input": 0.60,  "cached_input": 0.35, "output": 3.60},
@@ -296,7 +302,7 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "together/qwen2.5-7b-turbo":       {"provider": "together", "input": 0.30,  "output": 0.30},
     "together/gemma-4-31b":            {"provider": "together", "input": 0.39,  "output": 0.97},
     "together/deepseek-v4-pro":        {"provider": "together", "input": 1.32,  "cached_input": 0.13, "output": 3.96},
-    "together/deepseek-v4-flash":      {"provider": "together", "input": 0.14,  "cached_input": 0.03, "output": 0.28},
+    "together/deepseek-v4-flash":      {"provider": "together", "input": 0.14,  "cached_input": 0.03, "output": 0.28, "deprecated": True, "notes": "Dedicated-only; not in Serverless pricing"},
     "together/kimi-k2.7-code":         {'provider': 'together', 'input': 0.95, 'output': 4.0, 'cached_input': 0.19, 'deprecated': True, 'notes': 'Removed from live serverless pricing page'},
     "together/kimi-k2.6":              {'provider': 'together', 'input': 1.2, 'output': 4.5, 'cached_input': 0.2, 'deprecated': True, 'notes': 'Removed from live serverless pricing page'},
     "together/kimi-k3":                {"provider": "together", "input": 3.00,  "cached_input": 0.30, "output": 15.00},
@@ -316,6 +322,13 @@ _PRICES: Dict[str, Dict[str, object]] = {
     'together/rnj-1-instruct': {'provider': 'together', 'input': 0.15, 'output': 0.15},
     'together/minimax-m2.7': {'provider': 'together', 'input': 0.3, 'output': 1.2, 'cached_input': 0.06},
     'together/qwen3.6-plus': {'provider': 'together', 'input': 0.5, 'output': 3.0, 'notes': 'Together API: Qwen/Qwen3.6-Plus'},
+    'together/meta-models/Muse-Spark-Open-816B-A42B': {'provider': 'together', 'input': 1.25, 'cached_input': 0.15, 'output': 4.25},
+    'together/Tev1-4B-experimental': {'provider': 'together', 'input': 0.04, 'output': 0.0},
+    'together/reflection/Beam-1.0-501B-A23B': {'provider': 'together', 'input': 0.4, 'cached_input': 0.04, 'output': 1.2},
+    'together/MiniMaxAI/MiniMax-M3.1-Flash': {'provider': 'together', 'input': 0.15, 'cached_input': 0.015, 'output': 0.6},
+    'together/deepseek-ai/DeepSeek-V4.1-Flash-1017': {'provider': 'together', 'input': 0.3, 'cached_input': 0.006, 'output': 1.2},
+    'together/zai-org/GLM-5.2': {'provider': 'together', 'input': 1.4, 'cached_input': 0.26, 'output': 4.4},
+    'together/nvidia/NVIDIA-Nemotron-3.5-Super-VL': {'provider': 'together', 'input': 0.15, 'cached_input': 0.02, 'output': 0.5},
 
     # =========================================================================
     # GITHUB COPILOT  (1 AI credit = $0.01 USD)
@@ -392,6 +405,7 @@ _PRICES: Dict[str, Dict[str, object]] = {
     'copilot/claude-opus-5.5': {'provider': 'copilot', 'input': 4.0, 'output': 20.0, 'cached_input': 0.2, 'cache_write': 5.0},
     'copilot/claude-sonnet-5.5': {'provider': 'copilot', 'input': 2.0, 'output': 10.0, 'cached_input': 0.2, 'cache_write': 2.5},
     'copilot/grok-4.7': {'provider': 'copilot', 'input': 2.0, 'output': 6.0, 'cached_input': 0.5, 'long_input': 4.0, 'long_cached_input': 1.0, 'long_output': 12.0, 'longctx_threshold': 200000, 'notes': 'Long-context >200k input tokens'},
+    'copilot/gemini-4-argon': {'provider': 'copilot', 'input': 2.0, 'cached_input': 0.1, 'output': 10.0, 'notes': 'Promotional pricing ends 2026-12-01'},
 
     # =========================================================================
     # GROQ  (ultra-fast inference)
@@ -405,7 +419,7 @@ _PRICES: Dict[str, Dict[str, object]] = {
                                       "notes": "131k ctx; ~662 tok/s", "deprecated": True},
     "groq/qwen3.6-27b":              {'provider': 'groq', 'input': 0.6, 'output': 3.0, 'deprecated': True, 'notes': 'Deprecated 2026-09-14; successor: qwen/qwen3.8-27b'},
     "groq/qwen3.8-27b":              {"provider": "groq", "input": 0.80,  "output": 4.00,
-                                      "notes": "131k ctx; multimodal"},
+                                      "notes": "Noncanonical ID; use groq/qwen/qwen3.8-27b", "deprecated": True},
     "groq/gpt-oss-20b":              {'provider': 'groq', 'input': 0.075, 'output': 0.3, 'deprecated': True, 'notes': 'Old noncanonical ID; active model: openai/gpt-oss-20b'},
     "groq/gpt-oss-120b":             {'provider': 'groq', 'input': 0.15, 'output': 0.6, 'deprecated': True, 'notes': 'Old noncanonical ID; active model: openai/gpt-oss-120b'},
     "groq/kimi-k2-instruct":         {'provider': 'groq', 'input': 1.0, 'output': 3.0, 'cached_input': 0.5, 'deprecated': True, 'notes': 'Retired Kimi K2 family'},

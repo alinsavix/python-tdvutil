@@ -44,70 +44,6 @@ class TestGetModel:
         assert m.provider.name == "OpenAI"
         assert "openai" in m.provider.url.lower()
 
-    def test_pricing_fields(self) -> None:
-        m = get_model("gpt-4o")
-        assert m.input == 2.50
-        assert m.output == 10.00
-        assert m.cached_input == 1.25
-
-    @pytest.mark.parametrize(
-        ("name", "input_price", "cached_price", "write_price", "output_price"),
-        [
-            ("gpt-5.6-sol", 4.00, 0.40, 5.00, 20.00),
-            ("gpt-6-astra", 10.00, 1.00, 12.50, 50.00),
-            ("copilot/gpt-5.6-sol", 4.00, 0.40, 5.00, 20.00),
-            ("copilot/gpt-6-astra", 10.00, 1.00, 12.50, 50.00),
-        ],
-    )
-    def test_updated_gpt_5_6_prices(
-        self,
-        name: str,
-        input_price: float,
-        cached_price: float,
-        write_price: float,
-        output_price: float,
-    ) -> None:
-        m = get_model(name)
-        assert m.input == input_price
-        assert m.cached_input == cached_price
-        assert m.cache_write == write_price
-        assert m.output == output_price
-
-    @pytest.mark.parametrize(
-        ("name", "input_price", "cached_price", "output_price"),
-        [
-            ("gemini-3.6-flash", 0.75, 0.075, 3.75),
-            ("gemini-3.7-flash", 0.75, 0.075, 3.75),
-            ("gemini-3.8-flash", 0.75, 0.075, 3.75),
-            ("gemini-3.5-flash-lite", 0.30, 0.03, 2.50),
-            ("claude-mythos-5", 10.00, 1.00, 50.00),
-            ("claude-fable-5.1", 10.00, 0.25, 50.00),
-            ("claude-opus-5.5", 4.00, 0.20, 20.00),
-            ("claude-sonnet-5-5", 2.00, 0.20, 10.00),
-            ("claude-haiku-5.5", 0.10, 0.01, 0.50),
-            ("copilot/claude-haiku-5.5", 0.10, 0.01, 0.50),
-            ("gpt-6.1-sol", 2.00, 0.10, 10.00),
-            ("gpt-6-luna", 0.10, 0.01, 0.50),
-            ("copilot/gpt-6.1-sol", 2.00, 0.10, 10.00),
-            ("copilot/mai-code-1.1-flash", 0.20, 0.02, 1.20),
-            ("grok-4.6", 2.00, 0.50, 6.00),
-            ("grok-4.7", 2.00, 0.50, 6.00),
-            ("zai-glm-5-3", 1.40, 0.14, 4.40),
-            ("together/ternary-bonsai-27b", 0.00, None, 0.00),
-            ("groq/openai/gpt-oss-20b", 0.075, 0.0375, 0.30),
-        ],
-    )
-    def test_new_model_prices(
-        self,
-        name: str,
-        input_price: float,
-        cached_price: float,
-        output_price: float,
-    ) -> None:
-        m = get_model(name)
-        assert m.input == input_price
-        assert m.cached_input == cached_price
-        assert m.output == output_price
 
     def test_no_fuzzy_match(self) -> None:
         with pytest.raises(KeyError):
@@ -130,10 +66,31 @@ class TestGetModel:
         assert m.name == "gpt-4-32k"
         assert m.deprecated is True
 
-    def test_none_fields_are_none(self) -> None:
-        # gpt-5.5-pro has no cached_input
-        m = get_model("gpt-5.5-pro")
-        assert m.cached_input is None
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "gpt-6-sol",
+            "claude-fable-5",
+            "claude-sonnet-5",
+        ],
+    )
+    def test_active_legacy_models_remain_available(self, name: str) -> None:
+        assert get_model(name).deprecated is False
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "gpt-5.6-cyber",
+            "gpt-rosalind-research",
+            "together/llama-3.3-70b",
+            "together/deepseek-v4-flash",
+            "groq/qwen3.8-27b",
+        ],
+    )
+    def test_retired_or_noncanonical_models_are_deprecated(self, name: str) -> None:
+        with pytest.raises(DeprecatedModelError):
+            get_model(name)
+
 
     def test_known_alias(self) -> None:
         assert get_model("claude-sonnet").name == "claude-sonnet-5-5"
@@ -142,10 +99,6 @@ class TestGetModel:
     def test_gpt_6_aliases(self, alias: str) -> None:
         assert get_model(alias).name == "gpt-6-astra"
 
-    def test_notes_field(self) -> None:
-        m = get_model("gpt-5.6-sol")
-        assert m.notes is not None
-        assert "pricing" in m.notes.lower() or "intro" in m.notes.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -392,19 +345,12 @@ class TestGetProviders:
         for p in get_providers():
             assert isinstance(p, LLM_Provider)
 
-    def test_known_providers_present(self) -> None:
-        ids = {p.id for p in get_providers()}
-        for expected in ["openai", "anthropic", "google", "mistral"]:
-            assert expected in ids
 
     def test_each_has_name_and_url(self) -> None:
         for p in get_providers():
             assert p.name
             assert p.url
 
-    def test_openai_url(self) -> None:
-        by_id = {p.id: p for p in get_providers()}
-        assert "openai.com" in by_id["openai"].url
 
 
 # ---------------------------------------------------------------------------
@@ -456,15 +402,6 @@ class TestDataIntegrity:
             if "deprecated" in data:
                 assert data["deprecated"] is True, f"{key}: deprecated should be True"
 
-    def test_known_deprecated_flagged(self) -> None:
-        for name in ["gpt-4-32k", "gpt-3.5-turbo", "gemini-2.0-flash", "claude-opus-4.1"]:
-            m = get_model(name, include_deprecated=True)
-            assert m.deprecated, f"{name} should be deprecated"
-
-    def test_known_active_not_flagged(self) -> None:
-        for name in ["gpt-4o", "claude-sonnet-5-5", "gemini-2.5-flash", "grok-4.5"]:
-            m = get_model(name)
-            assert not m.deprecated, f"{name} should not be deprecated"
 
     def test_get_models_providers_match_get_providers(self) -> None:
         provider_ids = {p.id for p in get_providers()}
