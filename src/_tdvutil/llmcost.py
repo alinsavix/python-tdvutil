@@ -1,7 +1,7 @@
 """
 LLM model pricing database and cost-calculation utilities.
 
-Prices last updated: 2026-10-23
+Prices last updated: 2026-10-27
 All token prices are USD per 1,000,000 tokens unless noted otherwise.
 
 Usage::
@@ -67,6 +67,9 @@ _PRICES: Dict[str, Dict[str, object]] = {
     # =========================================================================
 
     # --- Flagship / latest ---
+    "gpt-6.1-terra":    {"provider": "openai", "input": 1.00, "cached_input": 0.05, "cache_write": 1.25, "output": 5.00,
+                          "batch_input": 0.50, "batch_output": 2.50,
+                          "long_input": 2.00, "long_cached_input": 0.10, "long_cache_write": 2.50, "long_output": 7.50, "longctx_threshold": 272_000},
     "gpt-6-astra":      {"provider": "openai", "input": 10.00,  "cached_input": 1.00,  "cache_write": 12.50, "output": 50.00,
                           "batch_input": 5.00, "batch_output": 25.00,
                           "long_input": 20.00, "long_cached_input": 2.00, "long_cache_write": 25.00, "long_output": 75.00, "longctx_threshold": 272_000},
@@ -403,7 +406,8 @@ _PRICES: Dict[str, Dict[str, object]] = {
     'copilot/gpt-6.1-sol': {'provider': 'copilot', 'input': 2.0, 'output': 10.0, 'cached_input': 0.1, 'cache_write': 2.5, 'long_input': 4.0, 'long_cached_input': 0.2, 'long_cache_write': 5.0, 'long_output': 15.0, 'longctx_threshold': 272000, 'notes': 'Long-context >272k input tokens'},
     'copilot/gpt-6-luna': {'provider': 'copilot', 'input': 0.1, 'output': 0.5, 'cached_input': 0.01, 'cache_write': 0.125, 'long_input': 0.2, 'long_cached_input': 0.02, 'long_cache_write': 0.25, 'long_output': 0.75, 'longctx_threshold': 272000, 'notes': 'Long-context >272k input tokens'},
     'copilot/claude-opus-5.5': {'provider': 'copilot', 'input': 4.0, 'output': 20.0, 'cached_input': 0.2, 'cache_write': 5.0},
-    'copilot/claude-sonnet-5.5': {'provider': 'copilot', 'input': 2.0, 'output': 10.0, 'cached_input': 0.2, 'cache_write': 2.5},
+    'copilot/claude-sonnet-5.5': {'provider': 'copilot', 'input': 2.0, 'output': 10.0, 'cached_input': 0.1, 'cache_write': 2.5},
+    'copilot/gpt-6.1-terra': {'provider': 'copilot', 'input': 1.0, 'output': 5.0, 'cached_input': 0.05, 'cache_write': 1.25, 'long_input': 2.0, 'long_cached_input': 0.1, 'long_cache_write': 2.5, 'long_output': 7.5, 'longctx_threshold': 272000, 'notes': 'Long-context >272k input tokens'},
     'copilot/grok-4.7': {'provider': 'copilot', 'input': 2.0, 'output': 6.0, 'cached_input': 0.5, 'long_input': 4.0, 'long_cached_input': 1.0, 'long_output': 12.0, 'longctx_threshold': 200000, 'notes': 'Long-context >200k input tokens'},
     'copilot/gemini-4-argon': {'provider': 'copilot', 'input': 2.0, 'cached_input': 0.1, 'output': 10.0, 'notes': 'Promotional pricing ends 2026-12-01'},
 
