@@ -1,7 +1,7 @@
 """
 LLM model pricing database and cost-calculation utilities.
 
-Prices last updated: 2026-10-23
+Prices last updated: 2026-10-27
 All token prices are USD per 1,000,000 tokens unless noted otherwise.
 
 Usage::
@@ -67,6 +67,10 @@ _PRICES: Dict[str, Dict[str, object]] = {
     # =========================================================================
 
     # --- Flagship / latest ---
+    "gpt-6.1-terra":    {"provider": "openai", "input": 1.00, "cached_input": 0.05, "cache_write": 1.25, "output": 5.00,
+                          "batch_input": 0.50, "batch_output": 2.50,
+                          "long_input": 2.00, "long_cached_input": 0.10, "long_cache_write": 2.50, "long_output": 7.50, "longctx_threshold": 272_000,
+                          "notes": "Cache write rates are for 30-minute retention; 12-hour writes cost $2.50/1M short or $5.00/1M long"},
     "gpt-6-astra":      {"provider": "openai", "input": 10.00,  "cached_input": 1.00,  "cache_write": 12.50, "output": 50.00,
                           "batch_input": 5.00, "batch_output": 25.00,
                           "long_input": 20.00, "long_cached_input": 2.00, "long_cache_write": 25.00, "long_output": 75.00, "longctx_threshold": 272_000},
@@ -82,32 +86,32 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "gpt-5.4":          {"provider": "openai", "input": 2.50,   "cached_input": 0.25,  "output": 15.00,
                           "long_input": 5.00, "long_cached_input": 0.50, "long_output": 22.50, "longctx_threshold": 272_000},
     "gpt-5.4-mini":     {"provider": "openai", "input": 0.75,   "cached_input": 0.075, "output": 4.50},
-    "gpt-5.4-nano":     {"provider": "openai", "input": 0.20,   "cached_input": 0.02,  "output": 1.25},
+    "gpt-5.4-nano":     {"provider": "openai", "input": 0.20,   "cached_input": 0.02,  "output": 1.25, "deprecated": True, "notes": "OpenAI API shutdown 2027-04-01"},
     "gpt-5.4-pro":      {"provider": "openai", "input": 30.00,  "cached_input": None,  "output": 180.00,
                           "long_input": 60.00, "long_output": 270.00, "longctx_threshold": 272_000},
     "gpt-5.2":          {"provider": "openai", "input": 1.75,   "cached_input": 0.175, "output": 14.00},
     "gpt-5.2-pro":      {"provider": "openai", "input": 21.00,  "cached_input": None,  "output": 168.00},
-    "gpt-5.1":          {"provider": "openai", "input": 1.25,   "cached_input": 0.125, "output": 10.00},
-    "gpt-5":            {"provider": "openai", "input": 1.25,   "cached_input": 0.125, "output": 10.00},
-    "gpt-5-mini":       {"provider": "openai", "input": 0.25,   "cached_input": 0.025, "output": 2.00},
-    "gpt-5-nano":       {"provider": "openai", "input": 0.05,   "cached_input": 0.005, "output": 0.40},
-    "gpt-5-pro":        {"provider": "openai", "input": 15.00,  "cached_input": None,  "output": 120.00},
+    "gpt-5.1":          {"provider": "openai", "input": 1.25,   "cached_input": 0.125, "output": 10.00, "deprecated": True, "notes": "OpenAI API shutdown 2027-04-01"},
+    "gpt-5":            {"provider": "openai", "input": 1.25,   "cached_input": 0.125, "output": 10.00, "deprecated": True, "notes": "OpenAI API shutdown 2026-12-11"},
+    "gpt-5-mini":       {"provider": "openai", "input": 0.25,   "cached_input": 0.025, "output": 2.00, "deprecated": True, "notes": "OpenAI API shutdown 2026-12-11"},
+    "gpt-5-nano":       {"provider": "openai", "input": 0.05,   "cached_input": 0.005, "output": 0.40, "deprecated": True, "notes": "OpenAI API shutdown 2026-12-11"},
+    "gpt-5-pro":        {"provider": "openai", "input": 15.00,  "cached_input": None,  "output": 120.00, "deprecated": True, "notes": "OpenAI API shutdown 2026-12-11"},
 
     # --- GPT-4.x ---
     "gpt-4.1":          {"provider": "openai", "input": 2.00,   "cached_input": 0.50,  "output": 8.00},
     "gpt-4.1-mini":     {"provider": "openai", "input": 0.40,   "cached_input": 0.10,  "output": 1.60},
-    "gpt-4.1-nano":     {"provider": "openai", "input": 0.10,   "cached_input": 0.025, "output": 0.40},
+    "gpt-4.1-nano":     {"provider": "openai", "input": 0.10,   "cached_input": 0.025, "output": 0.40, "deprecated": True, "notes": "OpenAI API shut down 2026-10-23"},
     "gpt-4o":           {"provider": "openai", "input": 2.50,   "cached_input": 1.25,  "output": 10.00},
     "gpt-4o-mini":      {"provider": "openai", "input": 0.15,   "cached_input": 0.075, "output": 0.60},
 
     # --- Reasoning (o-series) ---
-    "o4-mini":          {"provider": "openai", "input": 1.10,   "cached_input": 0.275, "output": 4.40},
-    "o3":               {"provider": "openai", "input": 2.00,   "cached_input": 0.50,  "output": 8.00},
+    "o4-mini":          {"provider": "openai", "input": 1.10,   "cached_input": 0.275, "output": 4.40, "deprecated": True, "notes": "OpenAI API shut down 2026-10-23"},
+    "o3":               {"provider": "openai", "input": 2.00,   "cached_input": 0.50,  "output": 8.00, "deprecated": True, "notes": "OpenAI API shutdown 2026-12-11"},
     "o3-mini":          {"provider": "openai", "input": 1.10,   "cached_input": 0.55,  "output": 4.40,  "deprecated": True},
-    "o3-pro":           {"provider": "openai", "input": 20.00,  "cached_input": None,  "output": 80.00},
-    "o1":               {"provider": "openai", "input": 15.00,  "cached_input": 7.50,  "output": 60.00},
+    "o3-pro":           {"provider": "openai", "input": 20.00,  "cached_input": None,  "output": 80.00, "deprecated": True, "notes": "OpenAI API shutdown 2026-12-11"},
+    "o1":               {"provider": "openai", "input": 15.00,  "cached_input": 7.50,  "output": 60.00, "deprecated": True, "notes": "OpenAI API shut down 2026-10-23"},
     "o1-mini":          {"provider": "openai", "input": 1.10,   "cached_input": 0.55,  "output": 4.40,  "deprecated": True},
-    "o1-pro":           {"provider": "openai", "input": 150.00, "cached_input": None,  "output": 600.00},
+    "o1-pro":           {"provider": "openai", "input": 150.00, "cached_input": None,  "output": 600.00, "deprecated": True, "notes": "OpenAI API shut down 2026-10-23"},
 
     # --- Legacy GPT-4 (all deprecated) ---
     "gpt-4o-2024-05-13":         {"provider": "openai", "input": 5.00,  "output": 15.00, "deprecated": True},
@@ -124,12 +128,12 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "gpt-3.5-turbo-16k-0613":    {"provider": "openai", "input": 3.00, "output": 4.00, "deprecated": True},
 
     # --- Specialized ---
-    "o3-deep-research":          {"provider": "openai", "input": 10.00, "cached_input": 2.50,  "output": 40.00},
-    "o4-mini-deep-research":     {"provider": "openai", "input": 2.00,  "cached_input": 0.50,  "output": 8.00},
+    "o3-deep-research":          {"provider": "openai", "input": 10.00, "cached_input": 2.50,  "output": 40.00, "deprecated": True, "notes": "OpenAI API shut down 2026-07-23"},
+    "o4-mini-deep-research":     {"provider": "openai", "input": 2.00,  "cached_input": 0.50,  "output": 8.00, "deprecated": True, "notes": "OpenAI API shut down 2026-07-23"},
     "gpt-4o-search-preview":     {"provider": "openai", "input": 2.50,  "output": 10.00},
     "gpt-4o-mini-search-preview":{"provider": "openai", "input": 0.15,  "output": 0.60},
-    "computer-use-preview":      {"provider": "openai", "input": 3.00,  "output": 12.00},
-    "codex-mini-latest":         {"provider": "openai", "input": 1.50,  "cached_input": 0.375, "output": 6.00},
+    "computer-use-preview":      {"provider": "openai", "input": 3.00,  "output": 12.00, "deprecated": True, "notes": "OpenAI API shut down 2026-07-23"},
+    "codex-mini-latest":         {"provider": "openai", "input": 1.50,  "cached_input": 0.375, "output": 6.00, "deprecated": True, "notes": "OpenAI API shut down 2026-02-12"},
 
     # --- Embeddings ---
     "text-embedding-3-small":    {"provider": "openai", "input": 0.02,  "output": None, "notes": "Embedding only"},
@@ -144,7 +148,7 @@ _PRICES: Dict[str, Dict[str, object]] = {
     'gpt-5.6-cyber': {'provider': 'openai', 'input': 12.5, 'output': 75.0, 'cached_input': 1.25, 'cache_write': 15.625, 'deprecated': True, 'notes': 'Superseded by gpt-5.5-cyber'},
     'gpt-5.5-cyber': {'provider': 'openai', 'input': 12.5, 'output': 75.0, 'cached_input': 1.25, 'notes': 'No published cache-write, batch, or long-context rate'},
     'chat-latest': {'provider': 'openai', 'input': 5.0, 'output': 30.0, 'cached_input': 0.5, 'notes': 'ChatGPT API model'},
-    'gpt-5.3-codex': {'provider': 'openai', 'input': 1.75, 'output': 14.0, 'cached_input': 0.175, 'notes': 'Fast mode is 2x standard rates'},
+    'gpt-5.3-codex': {'provider': 'openai', 'input': 1.75, 'output': 14.0, 'cached_input': 0.175, 'deprecated': True, 'notes': 'OpenAI API shutdown 2027-04-01; fast mode is 2x standard rates'},
     'gpt-rosalind-research': {'provider': 'openai', 'input': 5.0, 'output': 25.0, 'cached_input': 0.5, 'deprecated': True, 'notes': 'Superseded by gpt-rosalind-discovery'},
     'gpt-rosalind-discovery': {'provider': 'openai', 'input': 5.0, 'output': 25.0, 'cached_input': 0.5},
     'gpt-5-search-api': {'provider': 'openai', 'input': 1.25, 'output': 10.0, 'cached_input': 0.125},
@@ -178,7 +182,7 @@ _PRICES: Dict[str, Dict[str, object]] = {
                                   "batch_input": 1.00,    "batch_output": 5.00,
                                   "notes": "Active legacy model; superseded by Claude Sonnet 5.5"},
     "claude-sonnet-5-5":         {"provider": "anthropic", "input": 2.00,  "output": 10.00,
-                                  "cached_input": 0.20,   "cache_write": 2.50,
+                                  "cached_input": 0.10,   "cache_write": 2.50,
                                   "batch_input": 1.00,    "batch_output": 5.00},
     "claude-haiku-4.5":          {"provider": "anthropic", "input": 1.00,  "output": 5.00,
                                   "cached_input": 0.10,   "cache_write": 1.25,
@@ -201,7 +205,8 @@ _PRICES: Dict[str, Dict[str, object]] = {
                                   "batch_input": 2.50,    "batch_output": 12.50},
     "claude-sonnet-4.5":         {"provider": "anthropic", "input": 3.00,  "output": 15.00,
                                   "cached_input": 0.30,   "cache_write": 3.75,
-                                  "batch_input": 1.50,    "batch_output": 7.50},
+                                  "batch_input": 1.50,    "batch_output": 7.50,
+                                  "deprecated": True, "notes": "Claude API retirement 2026-11-30"},
     "claude-opus-4.5":           {"provider": "anthropic", "input": 5.00,  "output": 25.00,
                                   "cached_input": 0.50,   "cache_write": 6.25,
                                   "batch_input": 2.50,    "batch_output": 12.50},
@@ -215,19 +220,27 @@ _PRICES: Dict[str, Dict[str, object]] = {
     # GOOGLE GEMINI  (Gemini Developer API / Google AI Studio paid tier)
     # =========================================================================
 
+    "gemini-4-argon":        {"provider": "google", "input": 2.00, "output": 10.00,
+                              "cached_input": 0.10, "batch_input": 1.00, "batch_output": 5.00,
+                              "notes": "Implicit caching only; promotional pricing through 2026-11-30"},
+    "gemini-robotics-er-2-preview": {"provider": "google", "input": 1.00, "output": 5.00,
+                              "cached_input": 0.10, "batch_input": 0.50, "batch_output": 2.50,
+                              "notes": "Preview; promotional pricing through 2026-12-31"},
+    "gemini-robotics-er-2-streaming-preview": {"provider": "google", "input": 1.00, "output": 5.00,
+                              "notes": "Streaming preview; promotional pricing through 2026-12-31"},
     "gemini-2.5-pro":        {'provider': 'google', 'input': 1.25, 'output': 10.0, 'cached_input': 0.125, 'batch_input': 0.625, 'batch_output': 5.0, 'long_input': 2.5, 'long_cached_input': 0.25, 'long_output': 15.0, 'longctx_threshold': 200000, 'notes': 'Tiered above 200k context; cache storage $4.50/1M tok/hr'},
     "gemini-2.5-flash":      {'provider': 'google', 'input': 0.3, 'output': 2.5, 'cached_input': 0.03, 'batch_input': 0.15, 'batch_output': 1.25, 'notes': 'Audio input: $1.00/1M; batch pricing included'},
     "gemini-2.5-flash-lite": {'provider': 'google', 'input': 0.1, 'output': 0.4, 'cached_input': 0.01, 'batch_input': 0.05, 'batch_output': 0.2, 'notes': 'Audio input: $0.30/1M; batch pricing included'},
     "gemini-3.8-flash":      {"provider": "google", "input": 0.75,  "output": 3.75,
-                              "cached_input": 0.075,
+                              "cached_input": 0.075, "batch_input": 0.375, "batch_output": 1.875,
                               "notes": "GA; promotional pricing through 2026-12-31; thinking tokens billed in output"},
     "gemini-3.7-flash":      {"provider": "google", "input": 0.75,  "output": 3.75,
-                              "cached_input": 0.075,
-                              "notes": "GA; promotional pricing through 2026-12-31; thinking tokens billed in output"},
+                              "cached_input": 0.075, "deprecated": True,
+                              "notes": "Deprecated; automatically routed to gemini-3.8-flash"},
     "gemini-3.6-flash":      {"provider": "google", "input": 0.75,  "output": 3.75,
-                              "cached_input": 0.075,
+                              "cached_input": 0.075, "batch_input": 0.375, "batch_output": 1.875,
                               "notes": "GA; promotional pricing through 2026-12-31; thinking tokens billed in output"},
-    "gemini-3.5-flash":      {'provider': 'google', 'input': 1.5, 'output': 9.0, 'cached_input': 0.15, 'batch_input': 0.75, 'batch_output': 4.5, 'notes': 'Thinking tokens billed in output; batch pricing included'},
+    "gemini-3.5-flash":      {'provider': 'google', 'input': 1.5, 'output': 9.0, 'cached_input': 0.15, 'batch_input': 0.75, 'batch_output': 4.5, 'deprecated': True, 'notes': 'Deprecated; automatically routed to gemini-3.6-flash; historical prices'},
     "gemini-3.5-flash-lite": {'provider': 'google', 'input': 0.3, 'output': 2.5, 'cached_input': 0.03, 'batch_input': 0.15, 'batch_output': 1.25, 'notes': 'Thinking tokens billed in output; batch pricing included'},
     "gemini-3.1-pro-preview":{'provider': 'google', 'input': 2.0, 'output': 12.0, 'cached_input': 0.2, 'batch_input': 1.0, 'batch_output': 6.0, 'long_input': 4.0, 'long_cached_input': 0.4, 'long_output': 18.0, 'longctx_threshold': 200000, 'notes': 'Preview; tiered above 200k context; cache storage $4.50/1M tok/hr'},
     "gemini-3.1-flash-lite": {'provider': 'google', 'input': 0.25, 'output': 1.5, 'cached_input': 0.025, 'batch_input': 0.125, 'batch_output': 0.75, 'notes': 'Audio input: $0.50/1M; batch pricing included'},
@@ -262,7 +275,7 @@ _PRICES: Dict[str, Dict[str, object]] = {
 
     'zai-glm-5-3': {'provider': 'mistral', 'input': 1.4, 'output': 4.4, 'cached_input': 0.14, 'batch_input': 0.7, 'batch_output': 2.2, 'notes': 'Third-party hosted Z.ai model'},
     'zai-glm-5-3-flash': {'provider': 'mistral', 'input': 0.15, 'output': 0.5, 'cached_input': 0.03, 'batch_input': 0.075, 'batch_output': 0.25, 'notes': 'Third-party hosted Z.ai model'},
-    'zai-glm-5-2': {'provider': 'mistral', 'input': 1.4, 'output': 4.4, 'cached_input': 0.14, 'batch_input': 0.7, 'batch_output': 2.2, 'notes': 'Third-party hosted Z.ai model'},
+    'zai-glm-5-2': {'provider': 'mistral', 'input': 1.4, 'output': 4.4, 'cached_input': 0.14, 'batch_input': 0.7, 'batch_output': 2.2, 'deprecated': True, 'notes': 'Third-party hosted Z.ai model; deprecated by Mistral'},
     'voxtral-small-latest': {'provider': 'mistral', 'input': 0.1, 'output': 0.4, 'cached_input': 0.01, 'batch_input': 0.05, 'batch_output': 0.2, 'notes': 'Text token rates; audio input is $0.004/min'},
     'codestral-embed': {'provider': 'mistral', 'input': 0.15, 'output': None, 'cached_input': 0.015, 'batch_input': 0.075, 'notes': 'Embedding only'},
 
@@ -403,7 +416,8 @@ _PRICES: Dict[str, Dict[str, object]] = {
     'copilot/gpt-6.1-sol': {'provider': 'copilot', 'input': 2.0, 'output': 10.0, 'cached_input': 0.1, 'cache_write': 2.5, 'long_input': 4.0, 'long_cached_input': 0.2, 'long_cache_write': 5.0, 'long_output': 15.0, 'longctx_threshold': 272000, 'notes': 'Long-context >272k input tokens'},
     'copilot/gpt-6-luna': {'provider': 'copilot', 'input': 0.1, 'output': 0.5, 'cached_input': 0.01, 'cache_write': 0.125, 'long_input': 0.2, 'long_cached_input': 0.02, 'long_cache_write': 0.25, 'long_output': 0.75, 'longctx_threshold': 272000, 'notes': 'Long-context >272k input tokens'},
     'copilot/claude-opus-5.5': {'provider': 'copilot', 'input': 4.0, 'output': 20.0, 'cached_input': 0.2, 'cache_write': 5.0},
-    'copilot/claude-sonnet-5.5': {'provider': 'copilot', 'input': 2.0, 'output': 10.0, 'cached_input': 0.2, 'cache_write': 2.5},
+    'copilot/claude-sonnet-5.5': {'provider': 'copilot', 'input': 2.0, 'output': 10.0, 'cached_input': 0.1, 'cache_write': 2.5},
+    'copilot/gpt-6.1-terra': {'provider': 'copilot', 'input': 1.0, 'output': 5.0, 'cached_input': 0.05, 'cache_write': 1.25, 'long_input': 2.0, 'long_cached_input': 0.1, 'long_cache_write': 2.5, 'long_output': 7.5, 'longctx_threshold': 272000, 'notes': 'Long-context >272k input tokens'},
     'copilot/grok-4.7': {'provider': 'copilot', 'input': 2.0, 'output': 6.0, 'cached_input': 0.5, 'long_input': 4.0, 'long_cached_input': 1.0, 'long_output': 12.0, 'longctx_threshold': 200000, 'notes': 'Long-context >200k input tokens'},
     'copilot/gemini-4-argon': {'provider': 'copilot', 'input': 2.0, 'cached_input': 0.1, 'output': 10.0, 'notes': 'Promotional pricing ends 2026-12-01'},
 
