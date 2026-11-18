@@ -1,7 +1,7 @@
 """
 LLM model pricing database and cost-calculation utilities.
 
-Prices last updated: 2026-10-27
+Prices last updated: 2026-11-18
 All token prices are USD per 1,000,000 tokens unless noted otherwise.
 
 Usage::
@@ -29,7 +29,7 @@ from __future__ import annotations
 import difflib
 import warnings
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 __all__ = [
     "DeprecatedModelError",
@@ -52,6 +52,7 @@ __all__ = [
 #   cached_input             — price for cache-hit input tokens
 #   cache_write              — price to write tokens into cache
 #   batch_input / batch_output
+#   batch_discount           — multiplier for cache and long-context Batch rates
 #   long_input / long_output — price above the long-context threshold
 #   long_cached_input / long_cache_write — long-context cache prices
 #   longctx_threshold        — token count where long-context pricing kicks in
@@ -67,6 +68,14 @@ _PRICES: Dict[str, Dict[str, object]] = {
     # =========================================================================
 
     # --- Flagship / latest ---
+    "gpt-6.2-astra":    {"provider": "openai", "input": 8.00, "cached_input": 0.40, "cache_write": 10.00, "output": 40.00,
+                          "batch_input": 4.00, "batch_output": 20.00, "batch_discount": 0.50,
+                          "long_input": 16.00, "long_cached_input": 0.80, "long_cache_write": 20.00, "long_output": 60.00, "longctx_threshold": 272_000,
+                          "notes": "Cache write rates are for 30-minute retention; 12-hour writes cost $20.00/1M short or $40.00/1M long"},
+    "gpt-6.2-sol":      {"provider": "openai", "input": 2.00, "cached_input": 0.10, "cache_write": 2.50, "output": 10.00,
+                          "batch_input": 1.00, "batch_output": 5.00, "batch_discount": 0.50,
+                          "long_input": 4.00, "long_cached_input": 0.20, "long_cache_write": 5.00, "long_output": 15.00, "longctx_threshold": 272_000,
+                          "notes": "Cache write rates are for 30-minute retention; 12-hour writes cost $5.00/1M short or $10.00/1M long"},
     "gpt-6.1-terra":    {"provider": "openai", "input": 1.00, "cached_input": 0.05, "cache_write": 1.25, "output": 5.00,
                           "batch_input": 0.50, "batch_output": 2.50,
                           "long_input": 2.00, "long_cached_input": 0.10, "long_cache_write": 2.50, "long_output": 7.50, "longctx_threshold": 272_000,
@@ -369,6 +378,12 @@ _PRICES: Dict[str, Dict[str, object]] = {
     "copilot/gpt-6-astra":         {"provider": "copilot", "input": 10.00, "cached_input": 1.00,  "cache_write": 12.50, "output": 50.00,
                                     "long_input": 20.00, "long_cached_input": 2.00, "long_cache_write": 25.00, "long_output": 75.00, "longctx_threshold": 272_000,
                                     "notes": "Long-ctx >272k tokens"},
+    "copilot/gpt-6.2-astra":       {"provider": "copilot", "input": 8.00, "cached_input": 0.40, "cache_write": 10.00, "output": 40.00,
+                                    "long_input": 16.00, "long_cached_input": 0.80, "long_cache_write": 20.00, "long_output": 60.00, "longctx_threshold": 272_000,
+                                    "notes": "Long-ctx >272k tokens"},
+    "copilot/gpt-6.2-sol":         {"provider": "copilot", "input": 2.00, "cached_input": 0.10, "cache_write": 2.50, "output": 10.00,
+                                    "long_input": 4.00, "long_cached_input": 0.20, "long_cache_write": 5.00, "long_output": 15.00, "longctx_threshold": 272_000,
+                                    "notes": "Long-ctx >272k tokens"},
     "copilot/claude-haiku-4.5":    {"provider": "copilot", "input": 1.00,  "cached_input": 0.10,  "cache_write": 1.25,  "output": 5.00},
     "copilot/claude-haiku-5.5":    {"provider": "copilot", "input": 0.10,  "cached_input": 0.01,  "cache_write": 0.125, "output": 0.50,
                                     "long_input": 0.50, "long_cached_input": 0.05, "long_cache_write": 0.625, "long_output": 2.50, "longctx_threshold": 100_000,
@@ -589,6 +604,7 @@ class LLM_Model:
     notes: Optional[str] = None           # free-form notes (context tiers, etc.)
     long_cached_input: Optional[float] = None  # USD per 1M long-context cache-hit tokens
     long_cache_write: Optional[float] = None   # USD per 1M long-context cache-write tokens
+    batch_discount: Optional[float] = None  # multiplier for cache and long-context Batch rates
 
     def cost(
         self,
@@ -652,14 +668,30 @@ class LLM_Model:
             else bool(long_context)
         )
 
-        if use_batch and self.batch_input is not None and self.batch_output is not None:
-            in_rate: float = self.batch_input
-            out_rate: float = self.batch_output
+        batch_enabled = (
+            use_batch
+            and self.batch_input is not None
+            and self.batch_output is not None
+        )
+        long_rates_available = (
+            use_long_context
+            and self.long_input is not None
+            and self.long_output is not None
+        )
+
+        if batch_enabled:
+            if long_rates_available and self.batch_discount is not None:
+                in_rate: float = cast(float, self.long_input) * self.batch_discount
+                out_rate: float = cast(float, self.long_output) * self.batch_discount
+                use_long_rates = True
+            else:
+                in_rate = cast(float, self.batch_input)
+                out_rate = cast(float, self.batch_output)
+                use_long_rates = False
             pricing_tier = "batch"
-            use_long_rates = False
-        elif use_long_context and self.long_input is not None and self.long_output is not None:
-            in_rate = self.long_input
-            out_rate = self.long_output
+        elif long_rates_available:
+            in_rate = cast(float, self.long_input)
+            out_rate = cast(float, self.long_output)
             pricing_tier = "long_context"
             use_long_rates = True
         else:
@@ -682,6 +714,10 @@ class LLM_Model:
         else:
             cache_hit_rate = self.cached_input if self.cached_input is not None else in_rate
             cache_write_rate = self.cache_write if self.cache_write is not None else in_rate
+
+        if batch_enabled and self.batch_discount is not None:
+            cache_hit_rate *= self.batch_discount
+            cache_write_rate *= self.batch_discount
 
         input_cost: float       = (input_tokens        / m_per) * in_rate
         cached_cost: float      = (cache_hit_tokens    / m_per) * cache_hit_rate
@@ -765,6 +801,7 @@ def _make_model(key: str) -> LLM_Model:
         cache_write=data.get("cache_write"),  # type: ignore[arg-type]
         batch_input=data.get("batch_input"),  # type: ignore[arg-type]
         batch_output=data.get("batch_output"),  # type: ignore[arg-type]
+        batch_discount=data.get("batch_discount"),  # type: ignore[arg-type]
         long_input=data.get("long_input"),  # type: ignore[arg-type]
         long_output=data.get("long_output"),  # type: ignore[arg-type]
         long_context_threshold=data.get("longctx_threshold"),  # type: ignore[arg-type]
