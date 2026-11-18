@@ -1,20 +1,10 @@
 """Tests for tdvutil.llmcost (LLM model pricing utilities)."""
 
+from _tdvutil.llmcost import (_ALIASES, _PRICES, DeprecatedModelError,
+                              LLM_Cost, LLM_Model, LLM_Provider, get_model,
+                              get_models, get_providers, search_models)
+
 import pytest
-
-from _tdvutil.llmcost import (
-    _ALIASES,
-    _PRICES,
-    DeprecatedModelError,
-    LLM_Cost,
-    LLM_Model,
-    LLM_Provider,
-    get_model,
-    get_models,
-    get_providers,
-    search_models,
-)
-
 
 # ---------------------------------------------------------------------------
 # get_model
@@ -271,6 +261,103 @@ class TestModelCost:
         )
         assert long.total_cost == pytest.approx(122.00, rel=1e-6)
         assert batch.total_cost == pytest.approx(30.00, rel=1e-6)
+
+    @pytest.mark.parametrize(
+        ("name", "rates", "long_rates", "batch_rates"),
+        [
+            (
+                "gpt-6.2-astra",
+                (8.00, 0.40, 10.00, 40.00),
+                (16.00, 0.80, 20.00, 60.00),
+                (4.00, 20.00),
+            ),
+            (
+                "gpt-6.2-sol",
+                (2.00, 0.10, 2.50, 10.00),
+                (4.00, 0.20, 5.00, 15.00),
+                (1.00, 5.00),
+            ),
+        ],
+    )
+    def test_gpt_6_2_openai_pricing(
+        self,
+        name: str,
+        rates: tuple[float, float, float, float],
+        long_rates: tuple[float, float, float, float],
+        batch_rates: tuple[float, float],
+    ) -> None:
+        m = get_model(name)
+        assert (m.input, m.cached_input, m.cache_write, m.output) == rates
+        assert (
+            m.long_input,
+            m.long_cached_input,
+            m.long_cache_write,
+            m.long_output,
+        ) == long_rates
+        assert m.long_context_threshold == 272_000
+        assert (m.batch_input, m.batch_output) == batch_rates
+
+    @pytest.mark.parametrize(
+        ("name", "expected_rates", "expected_total"),
+        [
+            ("gpt-6.2-astra", (8.00, 0.40, 10.00, 30.00), 48.40),
+            ("gpt-6.2-sol", (2.00, 0.10, 2.50, 7.50), 12.10),
+        ],
+    )
+    def test_gpt_6_2_long_context_batch_pricing(
+        self,
+        name: str,
+        expected_rates: tuple[float, float, float, float],
+        expected_total: float,
+    ) -> None:
+        m = get_model(name)
+        cost = m.cost(
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            cache_hit_tokens=1_000_000,
+            cache_write_tokens=1_000_000,
+            use_batch=True,
+        )
+        assert (
+            cost.input_rate,
+            cost.cache_hit_rate,
+            cost.cache_write_rate,
+            cost.output_rate,
+        ) == expected_rates
+        assert cost.total_cost == pytest.approx(expected_total)
+
+    @pytest.mark.parametrize(
+        ("name", "rates", "long_rates"),
+        [
+            (
+                "copilot/gpt-6.2-astra",
+                (8.00, 0.40, 10.00, 40.00),
+                (16.00, 0.80, 20.00, 60.00),
+            ),
+            (
+                "copilot/gpt-6.2-sol",
+                (2.00, 0.10, 2.50, 10.00),
+                (4.00, 0.20, 5.00, 15.00),
+            ),
+        ],
+    )
+    def test_gpt_6_2_copilot_pricing(
+        self,
+        name: str,
+        rates: tuple[float, float, float, float],
+        long_rates: tuple[float, float, float, float],
+    ) -> None:
+        m = get_model(name)
+        assert (m.input, m.cached_input, m.cache_write, m.output) == rates
+        assert (
+            m.long_input,
+            m.long_cached_input,
+            m.long_cache_write,
+            m.long_output,
+        ) == long_rates
+        assert m.long_context_threshold == 272_000
+        assert m.batch_input is None
+        assert m.batch_output is None
 
     def test_xai_long_context_pricing(self) -> None:
         m = get_model("grok-4.3")
